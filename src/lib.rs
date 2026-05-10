@@ -102,6 +102,21 @@ unsafe fn initial_loading_hook(ctx: &mut skyline::hooks::InlineCtx) {
 static ALT_NUMBER: Mutex<Option<usize>> = Mutex::new(None);
 static IS_ONLINE: AtomicBool = AtomicBool::new(false);
 
+#[no_mangle]
+pub unsafe extern "C" fn get_match_mode_extern(main: &mut u32, submode: &mut u32) {
+    get_match_mode(main, submode)
+}
+
+#[skyline::from_offset(0x1743870)]
+unsafe fn get_match_mode(main: &mut u32, submode: &mut u32);
+
+unsafe fn is_local_wireless() -> bool {
+    let mut main = 0u32;
+    let mut submode = 0u32;
+    get_match_mode(&mut main, &mut submode);
+    main == 58
+}
+
 #[skyline::hook(offset = 0x3540860)]
 unsafe fn init_loaded_dir(info: &'static FilesystemInfo, index: u32) -> *mut LoadedDirectory {
     // The index will either be an index to a DirInfo (what we want) or a DirectoryOffset
@@ -173,16 +188,27 @@ unsafe fn init_loaded_dir(info: &'static FilesystemInfo, index: u32) -> *mut Loa
 
             let files = search::collect_files_from_path(arc, fs.search(), path.hash40(), alt, true);
 
-            for child in loaded_directory.child_path_indices.iter().copied() {
-                resources::decrement_ref_count(fs, child);
-            }
+            // If the alt folder doesn't exist or yielded nothing, leave the original
+            // child list alone — clearing it here produces an empty LoadedDirectory
+            // and a black-screen stage load.
+            if files.is_empty() {
+                log::warn!(
+                    "No files collected for alt {} of '{}', leaving vanilla children intact",
+                    alt,
+                    path.hash40().pretty()
+                );
+            } else {
+                for child in loaded_directory.child_path_indices.iter().copied() {
+                    resources::decrement_ref_count(fs, child);
+                }
 
-            loaded_directory.child_path_indices.clear();
+                loaded_directory.child_path_indices.clear();
 
-            for file in files {
-                loaded_directory.child_path_indices.push(file);
-                resources::increment_ref_count(fs, file);
-                resources::add_to_resource_list(res_service, file, 0);
+                for file in files {
+                    loaded_directory.child_path_indices.push(file);
+                    resources::increment_ref_count(fs, file);
+                    resources::add_to_resource_list(res_service, file, 0);
+                }
             }
         }
     }
@@ -192,7 +218,11 @@ unsafe fn init_loaded_dir(info: &'static FilesystemInfo, index: u32) -> *mut Loa
 
 #[skyline::hook(offset = 0x25fdf58, inline)]
 unsafe fn prepare_for_load(ctx: &InlineCtx) {
-    if IS_ONLINE.load(Ordering::Acquire) {
+    // Clear the alt before every stage load so a stale value from a prior match
+    // can't leak into an online/arena/local-wireless load where the CSS selection
+    // path isn't used. In online modes, fetch_current_alt_from_bgm_id will set it.
+    if IS_ONLINE.load(Ordering::Acquire) || is_local_wireless() {
+        *ALT_NUMBER.lock() = None;
         return;
     }
 
@@ -203,6 +233,7 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
             "Failed to get the path list entry from {:#x}",
             ctx.registers[8].x()
         );
+        *ALT_NUMBER.lock() = None;
         return;
     };
 
@@ -211,6 +242,7 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
             "Failed to get parent of the path {:#x}",
             ctx.registers[8].x()
         );
+        *ALT_NUMBER.lock() = None;
         return;
     };
 
