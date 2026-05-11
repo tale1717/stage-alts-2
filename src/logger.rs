@@ -1,7 +1,9 @@
-use locks::Mutex;
 use log::Level;
 use owo_colors::OwoColorize;
-use std::{fs::File, io::Write};
+use std::{
+    fs::OpenOptions,
+    io::Write,
+};
 
 pub struct StageAltsLogger;
 
@@ -30,6 +32,21 @@ impl log::Log for StageAltsLogger {
             colorize_level(record.level()),
             record.args()
         );
+
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("sd:/ultimate/stage-alts/stage-alts.log")
+        {
+            let _ = writeln!(
+                file,
+                "[{}:{} | {}] {}",
+                record.file().unwrap_or("unknown"),
+                record.line().unwrap_or(0),
+                record.level(),
+                record.args()
+            );
+        }
     }
 
     fn flush(&self) {}
