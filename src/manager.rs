@@ -207,6 +207,33 @@ pub struct SelectedAlts {
     pub current_index: usize,
 }
 
+fn log_selected_alt(label: &str, info: SelectedAltInfo) {
+    log::info!(
+        "[stage-alts] {label}: stage={} normal_form={} selected_index={}",
+        info.stage_info.name.pretty(),
+        info.stage_info.normal_form,
+        info.index
+    );
+}
+
+fn log_resolved_alt(label: &str, info: SelectedAltInfo, resolved: Option<AltInfo>) {
+    match resolved {
+        Some(alt) => log::info!(
+            "[stage-alts] {label}: stage={} normal_form={} selected_index={} resolved_slot={}",
+            info.stage_info.name.pretty(),
+            info.stage_info.normal_form,
+            info.index,
+            alt.slot_value
+        ),
+        None => log::warn!(
+            "[stage-alts] {label}: stage={} normal_form={} selected_index={} resolved_slot=None",
+            info.stage_info.name.pretty(),
+            info.stage_info.normal_form,
+            info.index
+        ),
+    }
+}
+
 pub struct AltManager {
     pub alts: BTreeMap<StageInfo, Vec<AltInfo>>,
     pub selected_alts: Option<SelectedAlts>,
@@ -293,6 +320,22 @@ impl AltManager {
         second: Option<SelectedAltInfo>,
         third: Option<SelectedAltInfo>,
     ) {
+
+        log::info!("[stage-alts] set_alts called");
+        log_selected_alt("set_alts first", first);
+
+        if let Some(second) = second {
+            log_selected_alt("set_alts second", second);
+        } else {
+            log::info!("[stage-alts] set_alts second=None");
+        }
+
+        if let Some(third) = third {
+            log_selected_alt("set_alts third", third);
+        } else {
+            log::info!("[stage-alts] set_alts third=None");
+        }
+
         let playable = match (second, third) {
             (Some(second), Some(third)) => PlayableAlts::ThreeStages([first, second, third]),
             (Some(second), None) => PlayableAlts::TwoStages([first, second]),
@@ -307,22 +350,34 @@ impl AltManager {
     }
 
     pub fn fetch_advance(&mut self) -> Option<usize> {
-        let alts = self.selected_alts.as_mut()?;
+        let Some(alts) = self.selected_alts.as_mut() else {
+            log::warn!("[stage-alts] fetch_advance selected_alts=None");
+            return None;
+        };
+
         match alts.playable {
-            PlayableAlts::OneStage(info) => self
-                .nth_alt(info.stage_info, info.index)
-                .map(|info| info.slot_value),
+            PlayableAlts::OneStage(info) => {
+                let resolved = self.nth_alt(info.stage_info, info.index);
+                log_resolved_alt("fetch_advance OneStage", info, resolved);
+                resolved.map(|info| info.slot_value)
+            }
             PlayableAlts::TwoStages(infos) => {
-                let info = infos[alts.current_index % 2];
+                let cycle_index = alts.current_index % 2;
+                let info = infos[cycle_index];
                 alts.current_index += 1;
-                self.nth_alt(info.stage_info, info.index)
-                    .map(|info| info.slot_value)
+                let resolved = self.nth_alt(info.stage_info, info.index);
+                log::info!("[stage-alts] fetch_advance TwoStages cycle_index={cycle_index}");
+                log_resolved_alt("fetch_advance TwoStages", info, resolved);
+                resolved.map(|info| info.slot_value)
             }
             PlayableAlts::ThreeStages(infos) => {
-                let info = infos[alts.current_index % 3];
+                let cycle_index = alts.current_index % 3;
+                let info = infos[cycle_index];
                 alts.current_index += 1;
-                self.nth_alt(info.stage_info, info.index)
-                    .map(|info| info.slot_value)
+                let resolved = self.nth_alt(info.stage_info, info.index);
+                log::info!("[stage-alts] fetch_advance ThreeStages cycle_index={cycle_index}");
+                log_resolved_alt("fetch_advance ThreeStages", info, resolved);
+                resolved.map(|info| info.slot_value)
             }
         }
     }
