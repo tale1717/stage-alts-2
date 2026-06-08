@@ -196,6 +196,13 @@ extern "C" fn set_alts(state: *mut lua::lua_State) -> i32 {
             let alt = lua::lua_tointegerx(state, -1, std::ptr::null_mut());
             lua::lua_pop(state, 1);
 
+            log::info!(
+                "[stage-alts] lua set_alts raw: alt={} panel={} form={}",
+                alt,
+                panel,
+                form
+            );
+
             if form < 0 || panel < 0 || alt < 0 {
                 None
             } else {

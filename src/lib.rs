@@ -342,6 +342,7 @@ pub fn main() {
     // Initialize our logger
     log::set_logger(Box::leak(Box::new(StageAltsLogger::new()))).unwrap();
     log::set_max_level(LevelFilter::Trace);
+    log::info!("[stage-alts] logger test: plugin started");
 
     utils::init_hash_lookup(false);
 
