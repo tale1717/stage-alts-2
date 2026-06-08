@@ -226,6 +226,9 @@ extern "C" fn set_alts(state: *mut lua::lua_State) -> i32 {
         if let Some(first) = first {
             mgr.set_alts(first, second, third);
         }
+        else {
+        mgr.clear_alts();
+        }
 
         0
     }

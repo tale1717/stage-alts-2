@@ -349,6 +349,11 @@ impl AltManager {
         });
     }
 
+    pub fn clear_alts(&mut self) {
+        log::info!("[stage-alts] clear_alts called");
+        self.selected_alts = None;
+    }
+
     pub fn fetch_advance(&mut self) -> Option<usize> {
         let Some(alts) = self.selected_alts.as_mut() else {
             log::warn!("[stage-alts] fetch_advance selected_alts=None");
