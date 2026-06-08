@@ -259,7 +259,7 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         );
         mgr.fetch_advance()
     };
-
+}
     unsafe fn get_place_id(stage_id: usize) -> usize {
         let start = (skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as *const u8)
             .add(0x45489b8);
@@ -373,5 +373,3 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
 
         lua::install();
     }
-
-}
