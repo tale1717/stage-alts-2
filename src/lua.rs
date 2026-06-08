@@ -218,7 +218,7 @@ extern "C" fn set_alts(state: *mut lua::lua_State) -> i32 {
                 form
             );
 
-            if form < 0 || panel < 0 || alt < 0 {
+            let info = if form < 0 || panel < 0 || alt < 0 {
                 None
             } else {
                 mgr.index_to_hash
@@ -231,18 +231,21 @@ extern "C" fn set_alts(state: *mut lua::lua_State) -> i32 {
                             normal_form: form == 0,
                         },
                     })
-            }
+            };
+
+            (info, alt, panel, form)
         };
 
-        let third = pop_info();
-        let second = pop_info();
-        let first = pop_info();
+        let (third, _third_alt, _third_panel, _third_form) = pop_info();
+        let (second, _second_alt, _second_panel, _second_form) = pop_info();
+        let (first, _first_alt, first_panel, first_form) = pop_info();
 
         if let Some(first) = first {
             mgr.set_alts(first, second, third);
-        }
-        else {
-        mgr.clear_alts();
+        } else if first_panel < 0 && first_form >= 0 {
+            mgr.set_random_auto(first_form == 0);
+        } else {
+            mgr.clear_alts();
         }
 
         0

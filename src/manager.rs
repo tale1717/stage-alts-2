@@ -200,6 +200,9 @@ pub enum PlayableAlts {
     OneStage(SelectedAltInfo),
     TwoStages([SelectedAltInfo; 2]),
     ThreeStages([SelectedAltInfo; 3]),
+    RandomAuto {
+        normal_form: bool,
+    },
 }
 
 pub struct SelectedAlts {
@@ -354,6 +357,18 @@ impl AltManager {
         self.selected_alts = None;
     }
 
+    pub fn set_random_auto(&mut self, normal_form: bool) {
+        log::info!(
+            "[stage-alts] set_random_auto called: normal_form={}",
+            normal_form
+        );
+
+        self.selected_alts = Some(SelectedAlts {
+            playable: PlayableAlts::RandomAuto { normal_form },
+            current_index: 0,
+        });
+    }
+
     pub fn fetch_advance(&mut self) -> Option<usize> {
         let Some(alts) = self.selected_alts.as_mut() else {
             log::warn!("[stage-alts] fetch_advance selected_alts=None");
@@ -384,6 +399,116 @@ impl AltManager {
                 log_resolved_alt("fetch_advance ThreeStages", info, resolved);
                 resolved.map(|info| info.slot_value)
             }
+
+            PlayableAlts::RandomAuto { normal_form } => {
+                let candidates: Vec<(StageInfo, usize)> = self
+                    .alts
+                    .iter()
+                    .filter(|(stage, alts)| stage.normal_form == normal_form && !alts.is_empty())
+                    .flat_map(|(stage, alts)| {
+                        alts.iter()
+                            .enumerate()
+                            .map(move |(index, _)| (*stage, index + 1))
+                    })
+                    .collect();
+
+                if candidates.is_empty() {
+                    log::warn!(
+                        "[stage-alts] fetch_advance RandomAuto: no candidates normal_form={}",
+                        normal_form
+                    );
+                    return None;
+                }
+
+                let candidate_index = alts.current_index % candidates.len();
+                alts.current_index += 1;
+
+                let (stage_info, selected_index) = candidates[candidate_index];
+                let resolved = self.nth_alt(stage_info, selected_index);
+
+                log::info!(
+                    "[stage-alts] fetch_advance RandomAuto: candidate_index={} candidate_count={} stage={} normal_form={} selected_index={}",
+                    candidate_index,
+                    candidates.len(),
+                    stage_info.name.pretty(),
+                    stage_info.normal_form,
+                    selected_index
+                );
+
+                log_resolved_alt(
+                    "fetch_advance RandomAuto",
+                    SelectedAltInfo {
+                        index: selected_index,
+                        stage_info,
+                    },
+                    resolved,
+                );
+
+                resolved.map(|info| info.slot_value)
+            }
+
+        }
+    }
+
+    pub fn fetch_advance_for_stage(&mut self, stage_info: StageInfo) -> Option<usize> {
+        let Some(alts) = self.selected_alts.as_mut() else {
+            log::warn!("[stage-alts] fetch_advance_for_stage selected_alts=None");
+            return None;
+        };
+
+        match alts.playable {
+            PlayableAlts::RandomAuto { normal_form } => {
+                if stage_info.normal_form != normal_form {
+                    log::warn!(
+                        "[stage-alts] fetch_advance_for_stage RandomAuto form mismatch: stage={} stage_normal_form={} random_normal_form={}",
+                        stage_info.name.pretty(),
+                        stage_info.normal_form,
+                        normal_form
+                    );
+                    return None;
+                }
+
+                let Some(stage_alts) = self.alts.get(&stage_info) else {
+                    log::warn!(
+                        "[stage-alts] fetch_advance_for_stage RandomAuto: no alts for actual stage={}",
+                        stage_info.name.pretty()
+                    );
+                    return None;
+                };
+
+                if stage_alts.is_empty() {
+                    log::warn!(
+                        "[stage-alts] fetch_advance_for_stage RandomAuto: empty alts for actual stage={}",
+                        stage_info.name.pretty()
+                    );
+                    return None;
+                }
+
+                let selected_index = (alts.current_index % stage_alts.len()) + 1;
+                alts.current_index += 1;
+
+                let resolved = self.nth_alt(stage_info, selected_index);
+
+                log::info!(
+                    "[stage-alts] fetch_advance_for_stage RandomAuto: actual_stage={} normal_form={} selected_index={} alt_count={}",
+                    stage_info.name.pretty(),
+                    stage_info.normal_form,
+                    selected_index,
+                    stage_alts.len()
+                );
+
+                log_resolved_alt(
+                    "fetch_advance_for_stage RandomAuto",
+                    SelectedAltInfo {
+                        index: selected_index,
+                        stage_info,
+                    },
+                    resolved,
+                );
+
+                resolved.map(|info| info.slot_value)
+            }
+            _ => self.fetch_advance(),
         }
     }
 
