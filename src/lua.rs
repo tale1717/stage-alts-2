@@ -49,7 +49,22 @@ extern "C" fn get_panel_alt_count(state: *mut lua::lua_State) -> i32 {
         lua::lua_pop(state, 1);
 
         if usize::MAX == panel_id {
-            lua::lua_pushinteger(state, 0);
+            let count = MANAGER
+                .read()
+                .alts
+                .iter()
+                .filter(|(stage, _)| stage.normal_form == (form_id == 0))
+                .map(|(_, alts)| alts.len())
+                .max()
+                .unwrap_or_default();
+
+            log::info!(
+                "[stage-alts] random panel alt count: form={} count={}",
+                form_id,
+                count
+            );
+
+            lua::lua_pushinteger(state, count as i64);
             return 1;
         }
 
