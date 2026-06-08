@@ -246,7 +246,7 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         return;
     };
 
-    let stage_info = manager::StageInfo::from_path(parent_path.hash40());
+    let stage_info = manager::StageInfo::from_path(parent_path.path.hash40());
 
     let mut mgr = manager::MANAGER.write();
 
@@ -255,7 +255,7 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
     } else {
         log::warn!(
             "[stage-alts] prepare_for_load: could not resolve stage info from parent path {}",
-            parent_path.hash40().pretty()
+            parent_path.path.hash40().pretty()
         );
         mgr.fetch_advance()
     };
