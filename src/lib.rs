@@ -268,7 +268,7 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
             path.path.hash40().pretty(),
             parent_path.path.hash40().pretty()
         );
-        mgr.fetch_advance()
+        None
     };
 }
     unsafe fn get_place_id(stage_id: usize) -> usize {
