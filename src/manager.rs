@@ -480,18 +480,20 @@ impl AltManager {
                 }
 
                 let Some(stage_alts) = self.alts.get(&stage_info) else {
-                    log::warn!(
-                        "[stage-alts] fetch_advance_for_stage RandomAuto: no alts for actual stage={}",
-                        stage_info.name.pretty()
-                    );
+                    log::info!(
+                        "[stage-alts] fetch_advance_for_stage RandomAuto: default_vanilla no_alt_entry actual_stage={} normal_form={}",
+                        stage_info.name.pretty(),
+                        stage_info.normal_form
+                );
                     return None;
                 };
 
                 if stage_alts.is_empty() {
-                    log::warn!(
-                        "[stage-alts] fetch_advance_for_stage RandomAuto: empty alts for actual stage={}",
-                        stage_info.name.pretty()
-                    );
+                    log::info!(
+                        "[stage-alts] fetch_advance_for_stage RandomAuto: default_vanilla empty_alt_list actual_stage={} normal_form={}",
+                        stage_info.name.pretty(),
+                        stage_info.normal_form
+                        );
                     return None;
                 }
 
