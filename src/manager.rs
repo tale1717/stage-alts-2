@@ -369,9 +369,9 @@ impl AltManager {
         };
 
         log::info!(
-        "[stage-alts] set_random_auto called: normal_form={} current_index={}",
-        normal_form,
-        current_index
+            "[stage-alts] set_random_auto called: normal_form={} current_index={}",
+            normal_form,
+            current_index
     );
 
         self.selected_alts = Some(SelectedAlts {
