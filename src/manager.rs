@@ -358,14 +358,25 @@ impl AltManager {
     }
 
     pub fn set_random_auto(&mut self, normal_form: bool) {
+        let current_index = match &self.selected_alts {
+            Some(SelectedAlts {
+                     playable: PlayableAlts::RandomAuto {
+                         normal_form: existing_normal_form,
+                     },
+                     current_index,
+                 }) if *existing_normal_form == normal_form => *current_index,
+            _ => 0,
+        };
+
         log::info!(
-            "[stage-alts] set_random_auto called: normal_form={}",
-            normal_form
-        );
+        "[stage-alts] set_random_auto called: normal_form={} current_index={}",
+        normal_form,
+        current_index
+    );
 
         self.selected_alts = Some(SelectedAlts {
             playable: PlayableAlts::RandomAuto { normal_form },
-            current_index: 0,
+            current_index,
         });
     }
 
