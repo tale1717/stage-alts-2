@@ -255,7 +255,7 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         mgr.fetch_advance_for_stage(stage_info)
     } else {
         log::warn!(
-            "[stage-alts] prepare_for_load: could not resolve stage info from parent path {}",
+            "[stage-alts] prepare_for_load: could not resolve stage info from path {} parent path {}",
             path.path.hash40().pretty(),
             parent_path.path.hash40().pretty()
         );
