@@ -249,6 +249,15 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
     let stage_info = manager::StageInfo::from_path(path.path.hash40())
         .or_else(|| manager::StageInfo::from_path(parent_path.path.hash40()));
 
+    log::info!(
+    "[stage-alts] prepare_for_load path={} parent={} resolved_stage={}",
+    path.path.hash40().pretty(),
+    parent_path.path.hash40().pretty(),
+    stage_info
+        .map(|info| info.name.pretty().to_string())
+        .unwrap_or_else(|| "None".to_string())
+);
+
     let mut mgr = manager::MANAGER.write();
 
     *ALT_NUMBER.lock() = if let Some(stage_info) = stage_info {
