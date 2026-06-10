@@ -260,7 +260,12 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
 
     let mut mgr = manager::MANAGER.write();
 
-    *ALT_NUMBER.lock() = if let Some(stage_info) = stage_info {
+    log::info!(
+    "[stage-alts] prepare_for_load decision: previous_alt_number={:?}",
+    *ALT_NUMBER.lock()
+);
+
+    let next_alt_number = if let Some(stage_info) = stage_info {
         mgr.fetch_advance_for_stage(stage_info)
     } else {
         log::warn!(
@@ -270,6 +275,15 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         );
         None
     };
+
+    log::info!(
+    "[stage-alts] prepare_for_load decision: next_alt_number={:?} path={} parent={}",
+    next_alt_number,
+    path.path.hash40().pretty(),
+    parent_path.path.hash40().pretty()
+);
+
+    *ALT_NUMBER.lock() = next_alt_number;
 }
     unsafe fn get_place_id(stage_id: usize) -> usize {
         let start = (skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as *const u8)
