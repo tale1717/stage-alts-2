@@ -380,6 +380,16 @@ impl AltManager {
         });
     }
 
+    pub fn is_random_auto(&self) -> bool {
+        matches!(
+        self.selected_alts,
+        Some(SelectedAlts {
+            playable: PlayableAlts::RandomAuto { .. },
+            ..
+        })
+    )
+    }
+
     pub fn fetch_advance(&mut self) -> Option<usize> {
         let Some(alts) = self.selected_alts.as_mut() else {
             log::warn!("[stage-alts] fetch_advance selected_alts=None");

@@ -273,7 +273,18 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
             path.path.hash40().pretty(),
             parent_path.path.hash40().pretty()
         );
-        None
+        
+        if mgr.is_random_auto() {
+            log::info!(
+            "[stage-alts] prepare_for_load unresolved path: RandomAuto active, using None"
+        );
+            None
+        } else {
+            log::info!(
+            "[stage-alts] prepare_for_load unresolved path: direct/manual active, falling back to fetch_advance"
+        );
+            mgr.fetch_advance()
+        }
     };
 
     log::info!(
