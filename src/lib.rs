@@ -273,16 +273,27 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
             path.path.hash40().pretty(),
             parent_path.path.hash40().pretty()
         );
-        
+
         if mgr.is_random_auto() {
-            log::info!(
-            "[stage-alts] prepare_for_load unresolved path: RandomAuto active, using None"
+            if let Some(parent_stage_info) = mgr.stage_info_from_parent_path(parent_path.path.hash40()) {
+                log::info!(
+            "[stage-alts] prepare_for_load unresolved path: RandomAuto active, resolved parent stage={}, using fetch_advance_for_stage",
+            parent_path.path.hash40().pretty()
         );
-            None
+
+                mgr.fetch_advance_for_stage(parent_stage_info)
+            } else {
+                log::info!(
+            "[stage-alts] prepare_for_load unresolved path: RandomAuto active, parent stage not found, using None"
+        );
+
+                None
+            }
         } else {
             log::info!(
-            "[stage-alts] prepare_for_load unresolved path: direct/manual active, falling back to fetch_advance"
-        );
+        "[stage-alts] prepare_for_load unresolved path: direct/manual active, falling back to fetch_advance"
+    );
+
             mgr.fetch_advance()
         }
     };

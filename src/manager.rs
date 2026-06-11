@@ -390,6 +390,13 @@ impl AltManager {
     )
     }
 
+    pub fn stage_info_from_parent_path(&self, parent_path: Hash40) -> Option<StageInfo> {
+        self.alts
+            .keys()
+            .copied()
+            .find(|stage| stage.name == parent_path)
+    }
+
     pub fn fetch_advance(&mut self) -> Option<usize> {
         let Some(alts) = self.selected_alts.as_mut() else {
             log::warn!("[stage-alts] fetch_advance selected_alts=None");
