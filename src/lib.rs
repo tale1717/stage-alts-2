@@ -246,8 +246,68 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         return;
     };
 
+    let stage_info = manager::StageInfo::from_path(path.path.hash40())
+        .or_else(|| manager::StageInfo::from_path(parent_path.path.hash40()));
+
+    log::info!(
+        "[stage-alts] prepare_for_load path={} parent={} resolved_stage={}",
+        path.path.hash40().pretty(),
+        parent_path.path.hash40().pretty(),
+        stage_info
+            .map(|info| info.name.pretty().to_string())
+            .unwrap_or_else(|| "None".to_string())
+    );
+
     let mut mgr = manager::MANAGER.write();
-    *ALT_NUMBER.lock() = mgr.fetch_advance();
+
+    log::info!(
+        "[stage-alts] prepare_for_load decision: previous_alt_number={:?}",
+        *ALT_NUMBER.lock()
+    );
+
+    let next_alt_number = if let Some(stage_info) = stage_info {
+        mgr.fetch_advance_for_stage(stage_info)
+    } else {
+        log::warn!(
+            "[stage-alts] prepare_for_load: could not resolve stage info from path {} parent path {}",
+            path.path.hash40().pretty(),
+            parent_path.path.hash40().pretty()
+        );
+
+        if mgr.is_random_auto() {
+            if let Some(parent_stage_info) =
+                mgr.stage_info_from_parent_path(parent_path.path.hash40())
+            {
+                log::info!(
+                    "[stage-alts] prepare_for_load unresolved path: RandomAuto active, resolved parent stage={}, using fetch_advance_for_stage",
+                    parent_path.path.hash40().pretty()
+                );
+
+                mgr.fetch_advance_for_stage(parent_stage_info)
+            } else {
+                log::info!(
+                    "[stage-alts] prepare_for_load unresolved path: RandomAuto active, parent stage not found, using None"
+                );
+
+                None
+            }
+        } else {
+            log::info!(
+                "[stage-alts] prepare_for_load unresolved path: direct/manual active, falling back to fetch_advance"
+            );
+
+            mgr.fetch_advance()
+        }
+    };
+
+    log::info!(
+        "[stage-alts] prepare_for_load decision: next_alt_number={:?} path={} parent={}",
+        next_alt_number,
+        path.path.hash40().pretty(),
+        parent_path.path.hash40().pretty()
+    );
+
+    *ALT_NUMBER.lock() = next_alt_number;
 }
 
 unsafe fn get_place_id(stage_id: usize) -> usize {
@@ -342,6 +402,7 @@ pub fn main() {
     // Initialize our logger
     log::set_logger(Box::leak(Box::new(StageAltsLogger::new()))).unwrap();
     log::set_max_level(LevelFilter::Trace);
+    log::info!("[stage-alts] logger test: plugin started");
 
     utils::init_hash_lookup(false);
 

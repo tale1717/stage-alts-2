@@ -49,7 +49,22 @@ extern "C" fn get_panel_alt_count(state: *mut lua::lua_State) -> i32 {
         lua::lua_pop(state, 1);
 
         if usize::MAX == panel_id {
-            lua::lua_pushinteger(state, 0);
+            let count = MANAGER
+                .read()
+                .alts
+                .iter()
+                .filter(|(stage, _)| stage.normal_form == (form_id == 0))
+                .map(|(_, alts)| alts.len())
+                .max()
+                .unwrap_or_default();
+
+            log::info!(
+                "[stage-alts] random panel alt count: form={} count={}",
+                form_id,
+                count
+            );
+
+            lua::lua_pushinteger(state, count as i64);
             return 1;
         }
 
@@ -196,7 +211,14 @@ extern "C" fn set_alts(state: *mut lua::lua_State) -> i32 {
             let alt = lua::lua_tointegerx(state, -1, std::ptr::null_mut());
             lua::lua_pop(state, 1);
 
-            if form < 0 || panel < 0 || alt < 0 {
+            log::info!(
+                "[stage-alts] lua set_alts raw: alt={} panel={} form={}",
+                alt,
+                panel,
+                form
+            );
+
+            let info = if form < 0 || panel < 0 || alt < 0 {
                 None
             } else {
                 mgr.index_to_hash
@@ -209,15 +231,21 @@ extern "C" fn set_alts(state: *mut lua::lua_State) -> i32 {
                             normal_form: form == 0,
                         },
                     })
-            }
+            };
+
+            (info, alt, panel, form)
         };
 
-        let third = pop_info();
-        let second = pop_info();
-        let first = pop_info();
+        let (third, _third_alt, _third_panel, _third_form) = pop_info();
+        let (second, _second_alt, _second_panel, _second_form) = pop_info();
+        let (first, _first_alt, first_panel, first_form) = pop_info();
 
         if let Some(first) = first {
             mgr.set_alts(first, second, third);
+        } else if first_panel < 0 && first_form >= 0 {
+            mgr.set_random_auto(first_form == 0);
+        } else {
+            mgr.clear_alts();
         }
 
         0
