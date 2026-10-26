@@ -213,7 +213,7 @@ pub struct SelectedAlts {
 fn log_selected_alt(label: &str, info: SelectedAltInfo) {
     log::info!(
         "[stage-alts] {label}: stage={} normal_form={} selected_index={}",
-        info.stage_info.name.pretty(),
+        crate::utils::string_for_hash(info.stage_info.name),
         info.stage_info.normal_form,
         info.index
     );
@@ -223,14 +223,14 @@ fn log_resolved_alt(label: &str, info: SelectedAltInfo, resolved: Option<AltInfo
     match resolved {
         Some(alt) => log::info!(
             "[stage-alts] {label}: stage={} normal_form={} selected_index={} resolved_slot={}",
-            info.stage_info.name.pretty(),
+            crate::utils::string_for_hash(info.stage_info.name),
             info.stage_info.normal_form,
             info.index,
             alt.slot_value
         ),
         None => log::warn!(
             "[stage-alts] {label}: stage={} normal_form={} selected_index={} resolved_slot=None",
-            info.stage_info.name.pretty(),
+            crate::utils::string_for_hash(info.stage_info.name),
             info.stage_info.normal_form,
             info.index
         ),
@@ -458,7 +458,7 @@ impl AltManager {
                     "[stage-alts] fetch_advance RandomAuto: candidate_index={} candidate_count={} stage={} normal_form={} selected_index={}",
                     candidate_index,
                     candidates.len(),
-                    stage_info.name.pretty(),
+                    crate::utils::string_for_hash(stage_info.name),
                     stage_info.normal_form,
                     selected_index
                 );
@@ -489,7 +489,7 @@ impl AltManager {
                 if stage_info.normal_form != normal_form {
                     log::warn!(
                         "[stage-alts] fetch_advance_for_stage RandomAuto form mismatch: stage={} stage_normal_form={} random_normal_form={}",
-                        stage_info.name.pretty(),
+                        crate::utils::string_for_hash(stage_info.name),
                         stage_info.normal_form,
                         normal_form
                     );
@@ -499,7 +499,7 @@ impl AltManager {
                 let Some(stage_alts) = self.alts.get(&stage_info) else {
                     log::info!(
                         "[stage-alts] fetch_advance_for_stage RandomAuto: default_vanilla no_alt_entry actual_stage={} normal_form={}",
-                        stage_info.name.pretty(),
+                        crate::utils::string_for_hash(stage_info.name),
                         stage_info.normal_form
                 );
                     return None;
@@ -508,7 +508,7 @@ impl AltManager {
                 if stage_alts.is_empty() {
                     log::info!(
                         "[stage-alts] fetch_advance_for_stage RandomAuto: default_vanilla empty_alt_list actual_stage={} normal_form={}",
-                        stage_info.name.pretty(),
+                        crate::utils::string_for_hash(stage_info.name),
                         stage_info.normal_form
                         );
                     return None;
@@ -521,7 +521,7 @@ impl AltManager {
 
                 log::info!(
                     "[stage-alts] fetch_advance_for_stage RandomAuto: actual_stage={} normal_form={} selected_index={} alt_count={}",
-                    stage_info.name.pretty(),
+                    crate::utils::string_for_hash(stage_info.name),
                     stage_info.normal_form,
                     selected_index,
                     stage_alts.len()

@@ -1,0 +1,11 @@
+[package]
+name = "stage-alts-path-tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+hash40 = "=1.3.1"

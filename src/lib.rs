@@ -21,6 +21,7 @@ mod music_fix;
 mod patching;
 mod resources;
 mod search;
+mod stage_paths;
 mod utils;
 
 extern "C" {
@@ -254,7 +255,7 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         path.path.hash40().pretty(),
         parent_path.path.hash40().pretty(),
         stage_info
-            .map(|info| info.name.pretty().to_string())
+            .map(|info| utils::string_for_hash(info.name))
             .unwrap_or_else(|| "None".to_string())
     );
 

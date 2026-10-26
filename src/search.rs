@@ -371,37 +371,7 @@ pub fn get_search_lookup() -> HashLookup {
 }
 
 fn guess_hash(hash: Hash40) -> Option<(usize, bool)> {
-    match hash.len() {
-        10 => {
-            for x in 1..100 {
-                let mut string = format!("normal_s{x:02}");
-                if Hash40::from(string.as_str()) == hash {
-                    return Some((x, true));
-                }
-
-                string.replace_range(..6, "battle");
-                if Hash40::from(string.as_str()) == hash {
-                    return Some((x, false));
-                }
-            }
-        }
-        11 => {
-            for x in 100..1000 {
-                let mut string = format!("normal_s{x:03}");
-                if Hash40::from(string.as_str()) == hash {
-                    return Some((x, true));
-                }
-
-                string.replace_range(..6, "battle");
-                if Hash40::from(string.as_str()) == hash {
-                    return Some((x, false));
-                }
-            }
-        }
-        _ => {}
-    }
-
-    None
+    crate::stage_paths::alternate_form(hash40::Hash40(hash.0))
 }
 
 pub fn build_alt_lookups() -> BTreeMap<StageInfo, Vec<AltInfo>> {
@@ -486,35 +456,27 @@ pub fn recreate_search_path_hash<'a>(
 ) -> Option<Hash40> {
     let mut components = vec![];
 
-    while path.file_name.hash40() != Hash40::from("normal")
-        && path.file_name.hash40() != Hash40::from("battle")
-    {
-        components.push(path.file_name.hash40());
-        let Ok(parent) = search.get_path_list_entry_from_hash(path.parent.hash40()) else {
+    // Follow the live entries to reconstruct the full path. A base lookup may
+    // already resolve to an alt entry after the search table has been patched.
+    loop {
+        components.push(hash40::Hash40(path.file_name.hash40().0));
+        let parent_hash = path.parent.hash40();
+        if parent_hash == Hash40::from("/") {
+            break;
+        }
+        let Ok(parent) = search.get_path_list_entry_from_hash(parent_hash) else {
             log::error!(
-                "Failed to get parent path entry, parent is '{}'",
-                path.parent.hash40().pretty()
+                "Failed to get parent path entry, parent is '{}' ({:#x})",
+                parent_hash.pretty(),
+                parent_hash.0
             );
             return None;
         };
-
         path = parent;
     }
 
-    let new_name = if alt == 0 {
-        path.file_name.hash40()
-    } else {
-        path.file_name
-            .hash40()
-            .concat(format!("_s{alt:02}").as_str())
-    };
-
-    let mut full_path = path.parent.hash40().concat("/").concat(new_name);
-    for component in components.into_iter().rev() {
-        full_path = full_path.concat("/").concat(component);
-    }
-
-    Some(full_path)
+    components.reverse();
+    crate::stage_paths::redirect_path(&components, alt).map(|hash| Hash40(hash.0))
 }
 
 pub fn collect_files_from_path(

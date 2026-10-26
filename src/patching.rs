@@ -1,7 +1,8 @@
 use crate::{
     manager::MANAGER,
     search::SearchEx,
-    utils::{ConcatHash, PrettyPath},
+    stage_paths::{self, PatchTarget},
+    utils::ConcatHash,
 };
 use smash_arc::*;
 
@@ -11,13 +12,15 @@ fn file_paths_mut(arc: &mut LoadedArc) -> &mut [FilePath] {
     }
 }
 
-/// Attempts to patch a file path by replacing the "normal" or "battle"
-/// with the same form but for the alt
-fn patch_file_path(hash: Hash40, alt: usize) -> Option<PrettyPath> {
-    let mut pretty = hash.pretty();
-    (pretty.replace("normal", format!("normal_s{alt:02}").as_str())
-        || pretty.replace("battle", format!("battle_s{alt:02}").as_str()))
-    .then(|| pretty)
+/// Classify the stage form before patching; numbered alt slots remain sources.
+fn patch_file_path(hash: Hash40, alt: usize) -> PatchTarget {
+    let pretty = hash.pretty();
+    let components: Vec<_> = pretty
+        .components()
+        .iter()
+        .map(|component| hash40::Hash40(component.0))
+        .collect();
+    stage_paths::patch_target(&components, alt)
 }
 
 /// Patches the children of a dir info to use alt paths
@@ -35,15 +38,18 @@ pub fn patch_dir_info(arc: &mut LoadedArc, path: Hash40, alt: usize) {
             .path
             .hash40();
 
-        // Try patching the path, if it fails then this isn't a stage form path
-        let Some(alt_path) = patch_file_path(path, alt) else {
-            log::warn!("Failed to find alt path for {}", path.pretty());
-            continue;
+        let alt_path = match patch_file_path(path, alt) {
+            PatchTarget::Redirect(hash) => Hash40(hash.0),
+            PatchTarget::Alternate => continue,
+            PatchTarget::Unsupported => {
+                log::warn!("Failed to find alt path for {}", path.pretty());
+                continue;
+            }
         };
 
         // Get the file info from the alt path
-        let Ok(alt_info) = arc.get_file_info_from_hash(alt_path.to_whole()).copied() else {
-            log::error!("Failed to find file info for {}", alt_path);
+        let Ok(alt_info) = arc.get_file_info_from_hash(alt_path).copied() else {
+            log::error!("Failed to find file info for {}", alt_path.pretty());
             continue;
         };
 
@@ -108,19 +114,21 @@ pub fn patch_search_section(search: &mut LoadedSearchSection, path: Hash40, alt:
         index = path.path.index() as usize;
         let path = path.path.hash40();
 
-        // Attempt to patch the filepath, if we can't then this path shouldn't
-        // even be in use
-        let Some(alt_path) = patch_file_path(path, alt) else {
-            log::error!("Failed to get alt path for {}", path.pretty());
-            continue;
+        let alt_path = match patch_file_path(path, alt) {
+            PatchTarget::Redirect(hash) => Hash40(hash.0),
+            PatchTarget::Alternate => continue,
+            PatchTarget::Unsupported => {
+                log::error!("Failed to get alt path for {}", path.pretty());
+                continue;
+            }
         };
 
         // Get the index of the alt path in the search section
         let Ok(alt_index) = search
-            .get_path_index_from_hash(alt_path.to_whole())
+            .get_path_index_from_hash(alt_path)
             .copied()
         else {
-            log::error!("Failed to get path index key from {}", alt_path,);
+            log::error!("Failed to get path index key from {}", alt_path.pretty());
             continue;
         };
 
