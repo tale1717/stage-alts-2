@@ -63,11 +63,11 @@ unsafe fn initial_loading_hook(ctx: &mut skyline::hooks::InlineCtx) {
     // we are able to get vanilla behavior/consistent behavior. if we don't do this, then
     // on stage alts there might by random spawn issues on stage alts for stages like
     // PS2 because arcropolis has random ordering with hashsets when it builds new directories
-    let lookup = search::get_search_lookup();
+    // Reuse the lookup built at plugin init instead of reading Hashes_all a second time
     search::sort_folder_contents(
         Hash40::from("/"),
         FilesystemInfo::instance_mut().unwrap().search_mut(),
-        &lookup,
+        utils::hash_lookup(),
     );
 
     // We can do this before we sort, but I like doing it after. We build a lookup
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn get_match_mode_extern(main: &mut u32, submode: &mut u32
     get_match_mode(main, submode)
 }
 
-#[skyline::from_offset(0x1743870)]
+#[skyline::from_offset(0x1743870 - 0x1a0)]
 unsafe fn get_match_mode(main: &mut u32, submode: &mut u32);
 
 unsafe fn is_local_wireless() -> bool {
@@ -117,7 +117,7 @@ unsafe fn is_local_wireless() -> bool {
     main == 58
 }
 
-#[skyline::hook(offset = 0x3540860)]
+#[skyline::hook(offset = 0x3540860 + 0x5b0)]
 unsafe fn init_loaded_dir(info: &'static FilesystemInfo, index: u32) -> *mut LoadedDirectory {
     // The index will either be an index to a DirInfo (what we want) or a DirectoryOffset
     // (what we don't want)
@@ -216,7 +216,7 @@ unsafe fn init_loaded_dir(info: &'static FilesystemInfo, index: u32) -> *mut Loa
     result
 }
 
-#[skyline::hook(offset = 0x25fdf58, inline)]
+#[skyline::hook(offset = 0x25fdf58 + 0x450, inline)]
 unsafe fn prepare_for_load(ctx: &InlineCtx) {
     // Clear the alt before every stage load so a stale value from a prior match
     // can't leak into an online/arena/local-wireless load where the CSS selection
@@ -250,20 +250,20 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         .or_else(|| manager::StageInfo::from_path(parent_path.path.hash40()));
 
     log::info!(
-    "[stage-alts] prepare_for_load path={} parent={} resolved_stage={}",
-    path.path.hash40().pretty(),
-    parent_path.path.hash40().pretty(),
-    stage_info
-        .map(|info| info.name.pretty().to_string())
-        .unwrap_or_else(|| "None".to_string())
-);
+        "[stage-alts] prepare_for_load path={} parent={} resolved_stage={}",
+        path.path.hash40().pretty(),
+        parent_path.path.hash40().pretty(),
+        stage_info
+            .map(|info| info.name.pretty().to_string())
+            .unwrap_or_else(|| "None".to_string())
+    );
 
     let mut mgr = manager::MANAGER.write();
 
     log::info!(
-    "[stage-alts] prepare_for_load decision: previous_alt_number={:?}",
-    *ALT_NUMBER.lock()
-);
+        "[stage-alts] prepare_for_load decision: previous_alt_number={:?}",
+        *ALT_NUMBER.lock()
+    );
 
     let next_alt_number = if let Some(stage_info) = stage_info {
         mgr.fetch_advance_for_stage(stage_info)
@@ -275,148 +275,151 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         );
 
         if mgr.is_random_auto() {
-            if let Some(parent_stage_info) = mgr.stage_info_from_parent_path(parent_path.path.hash40()) {
+            if let Some(parent_stage_info) =
+                mgr.stage_info_from_parent_path(parent_path.path.hash40())
+            {
                 log::info!(
-            "[stage-alts] prepare_for_load unresolved path: RandomAuto active, resolved parent stage={}, using fetch_advance_for_stage",
-            parent_path.path.hash40().pretty()
-        );
+                    "[stage-alts] prepare_for_load unresolved path: RandomAuto active, resolved parent stage={}, using fetch_advance_for_stage",
+                    parent_path.path.hash40().pretty()
+                );
 
                 mgr.fetch_advance_for_stage(parent_stage_info)
             } else {
                 log::info!(
-            "[stage-alts] prepare_for_load unresolved path: RandomAuto active, parent stage not found, using None"
-        );
+                    "[stage-alts] prepare_for_load unresolved path: RandomAuto active, parent stage not found, using None"
+                );
 
                 None
             }
         } else {
             log::info!(
-        "[stage-alts] prepare_for_load unresolved path: direct/manual active, falling back to fetch_advance"
-    );
+                "[stage-alts] prepare_for_load unresolved path: direct/manual active, falling back to fetch_advance"
+            );
 
             mgr.fetch_advance()
         }
     };
 
     log::info!(
-    "[stage-alts] prepare_for_load decision: next_alt_number={:?} path={} parent={}",
-    next_alt_number,
-    path.path.hash40().pretty(),
-    parent_path.path.hash40().pretty()
-);
+        "[stage-alts] prepare_for_load decision: next_alt_number={:?} path={} parent={}",
+        next_alt_number,
+        path.path.hash40().pretty(),
+        parent_path.path.hash40().pretty()
+    );
 
     *ALT_NUMBER.lock() = next_alt_number;
 }
-    unsafe fn get_place_id(stage_id: usize) -> usize {
-        let start = (skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as *const u8)
-            .add(0x45489b8);
 
-        let stage_entry = start.add(stage_id * 0x48);
-        let place_id = stage_entry.add(0x3c) as *const u32;
-        *place_id as usize
+unsafe fn get_place_id(stage_id: usize) -> usize {
+    let start = (skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as *const u8)
+        .add(0x45499b8);
+
+    let stage_entry = start.add(stage_id * 0x48);
+    let place_id = stage_entry.add(0x3c) as *const u32;
+    *place_id as usize
+}
+
+unsafe fn get_place_hash(place_id: usize) -> hash40::Hash40 {
+    let start = (skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as *const u8)
+        .add(0x4548420);
+
+    let stage_place_entry = start.add(place_id * 0x28) as *const u64;
+    let hash = *stage_place_entry;
+
+    hash40::Hash40(hash)
+}
+
+#[skyline::hook(offset = 0x16b9eb4 - 0x1a0, inline)]
+unsafe fn fetch_current_alt_from_bgm_id(ctx: &InlineCtx) {
+    let bgm_id_ptr = ctx.registers[1].x() + 0x28;
+
+    let bgm_id_ptr = bgm_id_ptr as *mut u64;
+
+    let bgm_id = *bgm_id_ptr;
+    let bgm_hash = bgm_id & 0xFF_FFFFFFFF;
+
+    let mgr = manager::MANAGER.read();
+    let cache = mgr.music_cache.as_ref().unwrap();
+    let stage_id = *(ctx.registers[1].x() as *const u32) as usize;
+
+    let hash = get_place_hash(get_place_id(stage_id));
+    if !cache.is_song_allowed(hash40::Hash40(bgm_hash)) {
+        let new_song = cache.get_random_song(hash);
+
+        *bgm_id_ptr = (*bgm_id_ptr & 0xFFFFFF00_00000000) | new_song.0;
     }
 
-    unsafe fn get_place_hash(place_id: usize) -> hash40::Hash40 {
-        let start = (skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as *const u8)
-            .add(0x4547420);
+    let alt_id = (bgm_id >> 40) & 0xFFFF;
+    *ALT_NUMBER.lock() = mgr.fetch_alt_for_stage(smash_arc::Hash40(hash.0), alt_id as usize);
+}
 
-        let stage_place_entry = start.add(place_id * 0x28) as *const u64;
-        let hash = *stage_place_entry;
+#[skyline::hook(offset = 0x22d9e90, inline)]
+unsafe fn online_melee_any_scene_create(_: &InlineCtx) {
+    IS_ONLINE.store(true, Ordering::Release);
+}
 
-        hash40::Hash40(hash)
-    }
+#[skyline::hook(offset = 0x22d9dc0, inline)]
+unsafe fn bg_matchmaking_seq(_: &InlineCtx) {
+    IS_ONLINE.store(true, Ordering::Release);
+}
 
-    #[skyline::hook(offset = 0x16b9eb4, inline)]
-    unsafe fn fetch_current_alt_from_bgm_id(ctx: &InlineCtx) {
-        let bgm_id_ptr = ctx.registers[1].x() + 0x28;
+#[skyline::hook(offset = 0x22d9cf0, inline)]
+unsafe fn arena_seq(_: &InlineCtx) {
+    IS_ONLINE.store(true, Ordering::Release);
+}
 
-        let bgm_id_ptr = bgm_id_ptr as *mut u64;
+#[skyline::hook(offset = 0x235a64c + 0x450, inline)]
+unsafe fn main_menu(_: &InlineCtx) {
+    IS_ONLINE.store(false, Ordering::Release);
+}
 
-        let bgm_id = *bgm_id_ptr;
-        let bgm_hash = bgm_id & 0xFF_FFFFFFFF;
+#[no_mangle]
+pub extern "C" fn get_current_stage_alt() -> usize {
+    ALT_NUMBER.lock().unwrap_or_default()
+}
 
-        let mgr = manager::MANAGER.read();
-        let cache = mgr.music_cache.as_ref().unwrap();
-        let stage_id = *(ctx.registers[1].x() as *const u32) as usize;
+#[skyline::main(name = "stage-alts")]
+pub fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        let location = info.location().unwrap();
 
-        let hash = get_place_hash(get_place_id(stage_id));
-        if !cache.is_song_allowed(hash40::Hash40(bgm_hash)) {
-            let new_song = cache.get_random_song(hash);
+        let msg = match info.payload().downcast_ref::<&'static str>() {
+            Some(s) => *s,
+            None => match info.payload().downcast_ref::<String>() {
+                Some(s) => &s[..],
+                None => "Box<Any>",
+            },
+        };
 
-            *bgm_id_ptr = (*bgm_id_ptr & 0xFFFFFF00_00000000) | new_song.0;
-        }
-
-        let alt_id = (bgm_id >> 40) & 0xFFFF;
-        *ALT_NUMBER.lock() = mgr.fetch_alt_for_stage(smash_arc::Hash40(hash.0), alt_id as usize);
-    }
-
-    #[skyline::hook(offset = 0x22d9e90, inline)]
-    unsafe fn online_melee_any_scene_create(_: &InlineCtx) {
-        IS_ONLINE.store(true, Ordering::Release);
-    }
-
-    #[skyline::hook(offset = 0x22d9dc0, inline)]
-    unsafe fn bg_matchmaking_seq(_: &InlineCtx) {
-        IS_ONLINE.store(true, Ordering::Release);
-    }
-
-    #[skyline::hook(offset = 0x22d9cf0, inline)]
-    unsafe fn arena_seq(_: &InlineCtx) {
-        IS_ONLINE.store(true, Ordering::Release);
-    }
-
-    #[skyline::hook(offset = 0x235a64c, inline)]
-    unsafe fn main_menu(_: &InlineCtx) {
-        IS_ONLINE.store(false, Ordering::Release);
-    }
-
-    #[no_mangle]
-    pub extern "C" fn get_current_stage_alt() -> usize {
-        ALT_NUMBER.lock().unwrap_or_default()
-    }
-
-    #[skyline::main(name = "stage-alts")]
-    pub fn main() {
-        std::panic::set_hook(Box::new(|info| {
-            let location = info.location().unwrap();
-
-            let msg = match info.payload().downcast_ref::<&'static str>() {
-                Some(s) => *s,
-                None => match info.payload().downcast_ref::<String>() {
-                    Some(s) => &s[..],
-                    None => "Box<Any>",
-                },
-            };
-
-            let err_msg = format!("thread has panicked at '{}', {}", msg, location);
-            skyline::error::show_error(
-                69,
-                "Skyline plugin as panicked! Please open the details and send a screenshot to the developer, then close the game.\n",
-                err_msg.as_str()
-            );
-        }));
-
-        // Initialize our logger
-        log::set_logger(Box::leak(Box::new(StageAltsLogger::new()))).unwrap();
-        log::set_max_level(LevelFilter::Trace);
-        log::info!("[stage-alts] logger test: plugin started");
-
-        utils::init_hash_lookup(false);
-
-        check_download_hashes();
-
-        skyline::install_hooks!(
-            initial_loading_hook,
-            prepare_for_load,
-            init_loaded_dir,
-            fetch_current_alt_from_bgm_id,
-            online_melee_any_scene_create,
-            bg_matchmaking_seq,
-            arena_seq,
-            main_menu
+        let err_msg = format!("thread has panicked at '{}', {}", msg, location);
+        skyline::error::show_error(
+            69,
+            "Skyline plugin as panicked! Please open the details and send a screenshot to the developer, then close the game.\n",
+            err_msg.as_str()
         );
+    }));
 
-        callbacks::install();
+    // Initialize our logger
+    log::set_logger(Box::leak(Box::new(StageAltsLogger::new()))).unwrap();
+    log::set_max_level(LevelFilter::Trace);
+    log::info!("[stage-alts] logger test: plugin started");
 
-        lua::install();
-    }
+    utils::init_hash_lookup(false);
+
+    check_download_hashes();
+
+    skyline::install_hooks!(
+        initial_loading_hook,
+        prepare_for_load,
+        init_loaded_dir,
+        fetch_current_alt_from_bgm_id,
+        online_melee_any_scene_create,
+        bg_matchmaking_seq,
+        arena_seq,
+        main_menu
+    );
+
+    callbacks::install();
+
+    lua::install();
+}
