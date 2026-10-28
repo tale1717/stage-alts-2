@@ -488,24 +488,36 @@ pub fn collect_files_from_path(
 ) -> Vec<u32> {
     let folder = if needs_alt_fix {
         let Ok(search_path) = search.get_path_list_entry_from_hash(path) else {
-            log::error!("Unable to get search path '{}'", path.pretty());
+            log::error!(
+                "Unable to get search path: source={} source_hash={:#x} alt={}",
+                path.pretty(), path.0, alt
+            );
             return vec![];
         };
 
         let Some(alt_path) = recreate_search_path_hash(search, search_path, alt) else {
-            log::error!("Unable to get alt path for '{}'", path.pretty());
+            log::error!(
+                "Unable to resolve alt path: source={} source_hash={:#x} alt={}",
+                path.pretty(), path.0, alt
+            );
             return vec![];
         };
 
         let Ok(folder) = search.get_folder_path_entry_from_hash(alt_path) else {
-            log::info!("Did not get search path entry for '{}'", path.pretty());
+            log::warn!(
+                "Missing alt folder: source={} source_hash={:#x} alt={} target_hash={:#x}",
+                path.pretty(), path.0, alt, alt_path.0
+            );
             return vec![];
         };
 
         folder
     } else {
         let Ok(folder) = search.get_folder_path_entry_from_hash(path) else {
-            log::info!("Did not get search path entry for '{}'", path.pretty());
+            log::warn!(
+                "Missing source folder: source={} source_hash={:#x} alt={}",
+                path.pretty(), path.0, alt
+            );
             return vec![];
         };
 

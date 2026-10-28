@@ -42,14 +42,20 @@ pub fn patch_dir_info(arc: &mut LoadedArc, path: Hash40, alt: usize) {
             PatchTarget::Redirect(hash) => Hash40(hash.0),
             PatchTarget::Alternate => continue,
             PatchTarget::Unsupported => {
-                log::warn!("Failed to find alt path for {}", path.pretty());
+                log::warn!(
+                    "Unsupported stage path: source={} source_hash={:#x} alt={}",
+                    path.pretty(), path.0, alt
+                );
                 continue;
             }
         };
 
         // Get the file info from the alt path
         let Ok(alt_info) = arc.get_file_info_from_hash(alt_path).copied() else {
-            log::error!("Failed to find file info for {}", alt_path.pretty());
+            log::error!(
+                "Missing alt file info: source={} source_hash={:#x} alt={} target_hash={:#x}",
+                path.pretty(), path.0, alt, alt_path.0
+            );
             continue;
         };
 
@@ -118,7 +124,10 @@ pub fn patch_search_section(search: &mut LoadedSearchSection, path: Hash40, alt:
             PatchTarget::Redirect(hash) => Hash40(hash.0),
             PatchTarget::Alternate => continue,
             PatchTarget::Unsupported => {
-                log::error!("Failed to get alt path for {}", path.pretty());
+                log::error!(
+                    "Unsupported stage path: source={} source_hash={:#x} alt={}",
+                    path.pretty(), path.0, alt
+                );
                 continue;
             }
         };
@@ -128,13 +137,19 @@ pub fn patch_search_section(search: &mut LoadedSearchSection, path: Hash40, alt:
             .get_path_index_from_hash(alt_path)
             .copied()
         else {
-            log::error!("Failed to get path index key from {}", alt_path.pretty());
+            log::error!(
+                "Missing alt search index: source={} source_hash={:#x} alt={} target_hash={:#x}",
+                path.pretty(), path.0, alt, alt_path.0
+            );
             continue;
         };
 
         // Get the mutable index of the base path in the search section
         let Ok(index) = search.get_path_index_from_hash_mut(path) else {
-            log::error!("Failed to get path index key from {}", path.pretty());
+            log::error!(
+                "Missing base search index: source={} source_hash={:#x} alt={} target_hash={:#x}",
+                path.pretty(), path.0, alt, alt_path.0
+            );
             continue;
         };
 

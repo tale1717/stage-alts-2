@@ -17,26 +17,10 @@ impl StageInfo {
     pub fn from_path(hash: Hash40) -> Option<Self> {
         let pretty = hash.pretty();
 
-        let components = pretty.components();
-        if components.len() != 3 {
-            return None;
-        }
-
-        if components[0] != Hash40::from("stage") {
-            return None;
-        }
-
-        let name = components[1];
-
-        let normal_form = if components[2] == Hash40::from("normal") {
-            true
-        } else if components[2] == Hash40::from("battle") {
-            false
-        } else {
-            return None;
-        };
-
-        Some(Self { name, normal_form })
+        let components: Vec<_> = pretty.components().iter()
+            .map(|hash| hash40::Hash40(hash.0)).collect();
+        let (name, normal_form) = crate::stage_paths::stage_identity(&components)?;
+        Some(Self { name: Hash40(name.0), normal_form })
     }
 }
 
@@ -391,10 +375,17 @@ impl AltManager {
     }
 
     pub fn stage_info_from_parent_path(&self, parent_path: Hash40) -> Option<StageInfo> {
-        self.alts
-            .keys()
-            .copied()
-            .find(|stage| stage.name == parent_path)
+        let normal_form = match self.selected_alts.as_ref()?.playable {
+            PlayableAlts::RandomAuto { normal_form } => normal_form,
+            _ => return None,
+        };
+        let pretty = parent_path.pretty();
+        let components: Vec<_> = pretty.components().iter()
+            .map(|hash| hash40::Hash40(hash.0)).collect();
+        let (name, normal_form) =
+            crate::stage_paths::parent_stage_identity(&components, normal_form)?;
+        let stage = StageInfo { name: Hash40(name.0), normal_form };
+        self.alts.contains_key(&stage).then_some(stage)
     }
 
     pub fn fetch_advance(&mut self) -> Option<usize> {

@@ -8,3 +8,6 @@ It checks base and already-selected paths, nested assets, normal/battle forms,
 other-slot rejection, path boundaries, source-slot preservation during patching,
 and the alternate-folder hashes reported in the runtime log. It does not validate
 the game's live filesystem tables, resource reference counts, or gameplay.
+
+Stage-identity cases also cover the five failed repeat visits from the log,
+normal/battle forms, and parent-directory recovery using the supplied form.

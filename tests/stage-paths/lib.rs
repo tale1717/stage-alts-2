@@ -4,7 +4,10 @@ pub mod stage_paths;
 
 #[cfg(test)]
 mod tests {
-    use super::stage_paths::{alternate_form, patch_target, redirect_path, PatchTarget};
+    use super::stage_paths::{
+        alternate_form, parent_stage_identity, patch_target, redirect_path,
+        stage_identity, PatchTarget,
+    };
     use hash40::Hash40;
 
     fn components(path: &str) -> Vec<Hash40> {
@@ -96,5 +99,68 @@ mod tests {
         for invalid in ["normal", "battle", "normal_s00", "normal_s1", "normal_s1000", "model_s01"] {
             assert_eq!(alternate_form(Hash40::new(invalid)), None);
         }
+    }
+
+    #[test]
+    fn stage_identity_accepts_base_and_alternate_forms_without_retaining_slots() {
+        for (form, normal) in [("normal", true), ("battle", false)] {
+            let expected = Some((Hash40::new("example"), normal));
+            assert_eq!(stage_identity(&components(&format!("stage/example/{form}"))), expected);
+            for slot in [1, 2, 3, 12, 18, 99, 100, 999] {
+                let path = format!("stage/example/{form}_s{slot:02}");
+                assert_eq!(stage_identity(&components(&path)), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn recovers_all_five_failed_stage_identities_from_the_runtime_log() {
+        for (stage, raw_form) in [
+            ("battlefield", 0xae6484135),
+            ("end", 0xa7f41108f),
+            ("battlefield_s", 0xa7f41108f),
+            ("poke_stadium2", 0xae6484135),
+            ("poke_kalos", 0xa914f71a3),
+        ] {
+            let path = [Hash40::new("stage"), Hash40::new(stage), Hash40(raw_form)];
+            assert_eq!(stage_identity(&path), Some((Hash40::new(stage), true)));
+        }
+    }
+
+    #[test]
+    fn repeated_stage_visits_keep_identity_across_different_slots() {
+        for stage in ["battlefield", "end", "poke_kalos"] {
+            let expected = Some((Hash40::new(stage), true));
+            for form in ["normal", "normal_s02", "normal_s01", "normal_s03", "normal"] {
+                let path = format!("stage/{stage}/{form}");
+                assert_eq!(stage_identity(&components(&path)), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_stage_paths_do_not_guess_a_stage_or_form() {
+        for path in ["", "stage", "stage/example", "ui/example/normal", "stage/example/model/normal", "stage/example/unknown", "stage/example/normal/model", "stage/example/normal_s00"] {
+            assert_eq!(stage_identity(&components(path)), None, "{path}");
+        }
+        assert_eq!(stage_identity(&[Hash40::new("stage"), Hash40(0), Hash40::new("normal")]), None);
+    }
+
+    #[test]
+    fn parent_fallback_uses_stage_name_and_the_supplied_form() {
+        for normal in [true, false] {
+            assert_eq!(
+                parent_stage_identity(&components("stage/battlefield"), normal),
+                Some((Hash40::new("battlefield"), normal))
+            );
+        }
+    }
+
+    #[test]
+    fn parent_fallback_rejects_non_stage_or_ambiguous_paths() {
+        for path in ["", "stage", "battlefield", "ui/battlefield", "stage/battlefield/normal", "stage/battlefield/model"] {
+            assert_eq!(parent_stage_identity(&components(path), true), None, "{path}");
+        }
+        assert_eq!(parent_stage_identity(&[Hash40::new("stage"), Hash40(0)], true), None);
     }
 }

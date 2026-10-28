@@ -31,6 +31,37 @@ fn stage_form(components: &[Hash40]) -> Option<Hash40> {
     }
 }
 
+/// Recover stage and form from a form directory, without retaining its old slot.
+pub fn stage_identity(components: &[Hash40]) -> Option<(Hash40, bool)> {
+    if components.len() != 3 || components[1] == Hash40(0) {
+        return None;
+    }
+    let form = stage_form(components)?;
+    let normal_form = if form == Hash40::new("normal") {
+        true
+    } else if form == Hash40::new("battle") {
+        false
+    } else {
+        alternate_form(form)?.1
+    };
+    Some((components[1], normal_form))
+}
+
+/// A stage-directory path has no form; the caller must supply the active mode's
+/// form and then verify that this exact stage/form has registered alts.
+pub fn parent_stage_identity(
+    components: &[Hash40],
+    normal_form: bool,
+) -> Option<(Hash40, bool)> {
+    if components.len() != 2
+        || components[0] != Hash40::new("stage")
+        || components[1] == Hash40(0)
+    {
+        return None;
+    }
+    Some((components[1], normal_form))
+}
+
 /// Redirect a base form, or retain a path already inside the selected form.
 /// Only the third component of stage/<name>/<form>/... can be replaced.
 pub fn redirect_path(components: &[Hash40], alt: usize) -> Option<Hash40> {

@@ -2058,6 +2058,25 @@ local try_handle_exiting_scene = function()
     return true
 end
 
+-- Ask the game while the preview is still live. Panel numbers alone do not
+-- identify Random consistently (both -1 and 0 were observed).
+local capture_alt_selection = function(preview_index)
+    local preview = stage_previews[preview_index + 1]
+    local is_random = preview.is_sub_stage_ ~= true
+        and UiScriptPlayer.invoke("is_random_stage_preview", preview_index) == true
+    local selection = {
+        alt_ = is_random and 0 or preview.selected_alt_,
+        panel_ = is_random and -1 or preview.panel_id_,
+        form_ = preview.form_type_
+    }
+    Alts.send_message(string.format(
+        "[stage-alts] selection preview=%d random=%s raw_panel=%d sent_panel=%d alt=%d form=%d",
+        preview_index, tostring(is_random), preview.panel_id_,
+        selection.panel_, selection.alt_, selection.form_
+    ))
+    return selection
+end
+
 local change_selected_alt = function(is_forward)
     if current_selected_preview == UI_INVALID_INDEX then
         Alts.send_message("Can't change alt on invalid preview")
@@ -2326,13 +2345,7 @@ main = function()
         regular_main_update()
     end
 
-    stop_long_cancel_se()
-    UiScriptPlayer.invoke("finalize_bgm")
-
-    if exit_code_ ~= SCENE_EXIT_CODE_NORMAL then
-        return
-    end
-
+    -- Snapshot alt choices before finalizing the live stage previews.
     local first = {
         alt_ = -1,
         panel_ = -1,
@@ -2351,22 +2364,23 @@ main = function()
         form_ = -1
     }
 
-    if USE_STAGE_NUM > 0 then
-        first.alt_ = stage_previews[1].selected_alt_
-        first.panel_ = stage_previews[1].panel_id_
-        first.form_ = stage_previews[1].form_type_
+    if exit_code_ == SCENE_EXIT_CODE_NORMAL then
+        if USE_STAGE_NUM > 0 then
+            first = capture_alt_selection(0)
+        end
+        if USE_STAGE_NUM > 1 then
+            second = capture_alt_selection(1)
+        end
+        if USE_STAGE_NUM > 2 then
+            third = capture_alt_selection(2)
+        end
     end
 
-    if USE_STAGE_NUM > 1 then
-        second.alt_ = stage_previews[2].selected_alt_
-        second.panel_ = stage_previews[2].panel_id_
-        second.form_ = stage_previews[2].form_type_
-    end
+    stop_long_cancel_se()
+    UiScriptPlayer.invoke("finalize_bgm")
 
-    if USE_STAGE_NUM > 2 then
-        third.alt_ = stage_previews[3].selected_alt_
-        third.panel_ = stage_previews[3].panel_id_
-        third.form_ = stage_previews[3].form_type_
+    if exit_code_ ~= SCENE_EXIT_CODE_NORMAL then
+        return
     end
 
     Alts.set_alts(

@@ -224,6 +224,17 @@ extern "C" fn set_alts(state: *mut lua::lua_State) -> i32 {
                 mgr.index_to_hash
                     .get(&(panel as usize))
                     .copied()
+                    .filter(|name| {
+                        if name.0 == 0 {
+                            log::warn!(
+                                "[stage-alts] rejecting zero stage mapping: panel={} alt={} form={}; use the matching standard Lua script for explicit Random detection",
+                                panel, alt, form
+                            );
+                            false
+                        } else {
+                            true
+                        }
+                    })
                     .map(|name| SelectedAltInfo {
                         index: alt as usize,
                         stage_info: StageInfo {

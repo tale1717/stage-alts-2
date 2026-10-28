@@ -403,7 +403,7 @@ pub fn main() {
     // Initialize our logger
     log::set_logger(Box::leak(Box::new(StageAltsLogger::new()))).unwrap();
     log::set_max_level(LevelFilter::Trace);
-    log::info!("[stage-alts] logger test: plugin started");
+    log::info!("[stage-alts] plugin started: random-identity-fix v1 (matching standard Lua required)");
 
     utils::init_hash_lookup(false);
 
