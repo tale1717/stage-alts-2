@@ -459,6 +459,11 @@ local set_stage_preview_form = function(preview_index, stage_form)
     if preview_index ~= UI_INVALID_INDEX then
         if UiScriptPlayer.invoke("is_fixed_form_type_stage_preview", preview_index) == true then
             local training_form = UiScriptPlayer.invoke("get_stage_fixed_form_type", preview_index)
+            Alts.send_message(string.format(
+                "[stage-alts] fixed-form override preview=%d cached_form=%s requested_form=%s applied_form=%s",
+                preview_index, tostring(stage_previews[preview_index + 1].form_type_),
+                tostring(stage_form), tostring(training_form)
+            ))
             UiScriptPlayer.invoke("set_stage_form_type_stage_preview", preview_index, training_form)
             if preview_index == current_selected_preview then
                 set_tab_form_text(training_form)
@@ -2074,6 +2079,20 @@ local capture_alt_selection = function(preview_index)
         preview_index, tostring(is_random), preview.panel_id_,
         selection.panel_, selection.alt_, selection.form_
     ))
+    -- Diagnostics only: preserve the cached form sent to Rust so this build
+    -- can distinguish fixed-form overrides from asset-path disagreements.
+    if preview.is_sub_stage_ ~= true then
+        local is_fixed = UiScriptPlayer.invoke("is_fixed_form_type_stage_preview", preview_index) == true
+        local fixed_form = -1
+        if is_fixed then
+            fixed_form = UiScriptPlayer.invoke("get_stage_fixed_form_type", preview_index)
+        end
+        Alts.send_message(string.format(
+            "[stage-alts] form snapshot preview=%d cached_form=%s is_fixed=%s fixed_form=%s sent_form=%s",
+            preview_index, tostring(preview.form_type_), tostring(is_fixed),
+            tostring(fixed_form), tostring(selection.form_)
+        ))
+    end
     return selection
 end
 

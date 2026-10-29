@@ -180,6 +180,10 @@ unsafe fn init_loaded_dir(info: &'static FilesystemInfo, index: u32) -> *mut Loa
             // this slot to the form being loaded, including revisited alt paths.
             if let Some(stage) = manager::StageInfo::from_path(path.hash40()) {
                 let parent = path.hash40().pretty().sub_range(2);
+                log::info!(
+                    "[stage-alts] form patch: source_hash={:#x} stage={} asset_normal_form={} alt={}",
+                    path.hash40().0, utils::string_for_hash(stage.name), stage.normal_form, alt
+                );
                 patch_dir_info(fs.arc_mut(), parent, alt, stage.normal_form);
                 patch_search_section(fs.search_mut(), parent, alt, stage.normal_form);
             } else {
@@ -239,14 +243,22 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
 
     let search = FilesystemInfo::instance().unwrap().search();
 
-    let Ok(path) = search.get_path_list_entry_from_hash(ctx.registers[8].x()) else {
+    let request_hash = ctx.registers[8].x();
+    let Ok(path) = search.get_path_list_entry_from_hash(request_hash) else {
         log::warn!(
             "Failed to get the path list entry from {:#x}",
-            ctx.registers[8].x()
+            request_hash
         );
         *ALT_NUMBER.lock() = None;
         return;
     };
+
+    // Do not pretty-print request_hash here: pretty() follows the same mutable
+    // search lookup and could conceal a difference from the original request.
+    log::info!(
+        "[stage-alts] load request: request_hash={:#x} resolved_hash={:#x} component_hash={:#x} parent_hash={:#x}",
+        request_hash, path.path.hash40().0, path.file_name.hash40().0, path.parent.hash40().0
+    );
 
     let Ok(parent_path) = search.get_path_list_entry_from_hash(path.parent.hash40()) else {
         log::warn!(
@@ -261,12 +273,13 @@ unsafe fn prepare_for_load(ctx: &InlineCtx) {
         .or_else(|| manager::StageInfo::from_path(parent_path.path.hash40()));
 
     log::info!(
-        "[stage-alts] prepare_for_load path={} parent={} resolved_stage={}",
+        "[stage-alts] prepare_for_load path={} parent={} resolved_stage={} asset_normal_form={:?}",
         path.path.hash40().pretty(),
         parent_path.path.hash40().pretty(),
         stage_info
             .map(|info| utils::string_for_hash(info.name))
-            .unwrap_or_else(|| "None".to_string())
+            .unwrap_or_else(|| "None".to_string()),
+        stage_info.map(|info| info.normal_form)
     );
 
     let mut mgr = manager::MANAGER.write();
@@ -413,7 +426,7 @@ pub fn main() {
     // Initialize our logger
     log::set_logger(Box::leak(Box::new(StageAltsLogger::new()))).unwrap();
     log::set_max_level(LevelFilter::Trace);
-    log::info!("[stage-alts] plugin started: form-patching-fix v1 (matching standard Lua required)");
+    log::info!("[stage-alts] plugin started: form-diagnostics v1 (matching diagnostic Lua required)");
 
     utils::init_hash_lookup(false);
 

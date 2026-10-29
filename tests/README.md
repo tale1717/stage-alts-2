@@ -15,6 +15,11 @@ Random reported on panel zero, negative and positive panels, manual panel zero,
 normal/Battlefield/Omega forms, cancellation, custom-stage handling, and capture
 before finalization. The nine-argument Rust interface stays unchanged.
 
+Form diagnostic checks also verify that fixed-form overrides are logged without
+changing the cached form, dispatched alt, or setter behavior. Fixed-form APIs are
+not queried for custom stages, canceled selections, or unused previews. These
+mocks cannot establish when the game's live fixed-form flag changes.
+
 The Rust harness compiles the production path rules without Skyline. These checks
 do not load game assets or prove that the live preview API still reports Random
 at capture time. Test the matching NRO and standard Lua together in Smash 13.0.5,

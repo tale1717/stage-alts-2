@@ -14,16 +14,16 @@ local dispatch_start = assert(source:find("    -- Snapshot alt choices before fi
 local dispatch_end = assert(source:find("\nend\n\nget_tab_switch", dispatch_start, true))
 local dispatch = "return function()\n" .. source:sub(dispatch_start, dispatch_end - 1) .. "\nend"
 
-local function preview(panel, alt, form, random, custom)
+local function preview(panel, alt, form, random, custom, fixed_form)
     return {
         panel_id_ = panel, selected_alt_ = alt, form_type_ = form,
-        random = random, is_sub_stage_ = custom or false
+        random = random, is_sub_stage_ = custom or false, fixed_form = fixed_form
     }
 end
 
 local function exercise(previews, canceled)
     local finalized, stopped, received = false, false, nil
-    local queries, logs = {}, {}
+    local queries, logs, form_queries = {}, {}, {}
     local context = setmetatable({
         stage_previews = previews, USE_STAGE_NUM = #previews,
         exit_code_ = canceled and 1 or 0, SCENE_EXIT_CODE_NORMAL = 0,
@@ -42,6 +42,17 @@ local function exercise(previews, canceled)
                     queries[#queries + 1] = index
                     return assert(previews[index + 1]).random
                 end
+                if name == "is_fixed_form_type_stage_preview" or name == "get_stage_fixed_form_type" then
+                    assert(not finalized, "Read form diagnostics before finalization")
+                    local item = assert(previews[index + 1])
+                    assert(not item.is_sub_stage_, "Do not query standard forms for custom stages")
+                    form_queries[#form_queries + 1] = name
+                    if name == "is_fixed_form_type_stage_preview" then
+                        return item.fixed_form ~= nil
+                    end
+                    assert(item.fixed_form ~= nil, "Only query the override for a fixed-form preview")
+                    return item.fixed_form
+                end
                 assert(name == "finalize_bgm", "Unexpected game call: " .. tostring(name))
                 assert(not finalized, "Finalize exactly once")
                 finalized = true
@@ -57,7 +68,7 @@ local function exercise(previews, canceled)
     context.capture_alt_selection = assert(load(helper, "@production-selection-helper", "t", context))()
     assert(load(dispatch, "@production-selection-dispatch", "t", context))()()
     assert(finalized and stopped)
-    return received, queries, logs
+    return received, queries, logs, form_queries
 end
 
 local function expect(values, wanted)
@@ -102,8 +113,8 @@ test("Random Omega form is retained", function()
     expect(exercise({preview(0, 4, 2, true)}), {0, -1, 2})
 end)
 test("Cancel finalizes without querying or sending selections", function()
-    local args, queries, logs = exercise({preview(0, 2, 0, true)}, true)
-    assert(args == nil and #queries == 0 and #logs == 0)
+    local args, queries, logs, form_queries = exercise({preview(0, 2, 0, true)}, true)
+    assert(args == nil and #queries == 0 and #logs == 0 and #form_queries == 0)
 end)
 test("Unused previews remain invalid", function()
     local args, queries = exercise({})
@@ -121,9 +132,57 @@ test("All three previews are captured before finalization", function()
     assert(#queries == 3 and queries[3] == 2)
 end)
 test("Custom stages are not reclassified using the standard Random flag", function()
-    local args, queries = exercise({preview(0, 0, 0, true, true)})
+    local args, queries, _, form_queries = exercise({preview(0, 0, 0, true, true)})
     expect(args, {0, 0, 0})
-    assert(#queries == 0)
+    assert(#queries == 0 and #form_queries == 0)
+end)
+
+test("Form diagnostics do not query an override for an ordinary preview", function()
+    local args, _, logs, queries = exercise({preview(-1, 0, 2, true)})
+    expect(args, {0, -1, 2})
+    assert(#queries == 1 and queries[1] == "is_fixed_form_type_stage_preview")
+    assert(logs[2]:find("cached_form=2 is_fixed=false fixed_form=-1 sent_form=2", 1, true))
+end)
+test("A conflicting fixed form is logged without changing the Random selection", function()
+    local args, _, logs, queries = exercise({preview(-1, 0, 0, true, false, 2)})
+    expect(args, {0, -1, 0})
+    assert(#queries == 2 and queries[2] == "get_stage_fixed_form_type")
+    assert(logs[2]:find("cached_form=0 is_fixed=true fixed_form=2 sent_form=0", 1, true))
+end)
+test("Fixed form zero is logged without changing a manual alt", function()
+    local args, _, logs = exercise({preview(3, 1, 2, false, false, 0)})
+    expect(args, {1, 3, 2})
+    assert(logs[2]:find("cached_form=2 is_fixed=true fixed_form=0 sent_form=2", 1, true))
+end)
+test("Override logging preserves the setter's existing fixed and ordinary behavior", function()
+    local start = assert(source:find("local set_stage_preview_form = function(preview_index, stage_form)", 1, true))
+    local finish = assert(source:find("\nend\n", start, true))
+    local setter_source = source:sub(start, finish + 3) .. "\nreturn set_stage_preview_form"
+    local fixed, applied, displayed = true, nil, nil
+    local logs = {}
+    local item = {form_type_ = 0}
+    local context = setmetatable({
+        UI_INVALID_INDEX = -1, current_selected_preview = 0,
+        stage_previews = {item},
+        set_tab_form_text = function(form) displayed = form end,
+        Alts = {send_message = function(message) logs[#logs + 1] = message end},
+        UiScriptPlayer = {invoke = function(name, index, form)
+            assert(index == 0, "An invalid preview must not query the game")
+            if name == "is_fixed_form_type_stage_preview" then return fixed end
+            if name == "get_stage_fixed_form_type" then assert(fixed); return 2 end
+            assert(name == "set_stage_form_type_stage_preview")
+            applied = form
+        end}
+    }, {__index = _G})
+    local setter = assert(load(setter_source, "@production-form-setter", "t", context))()
+    setter(0, 1)
+    assert(applied == 2 and displayed == 2 and item.form_type_ == 0)
+    assert(logs[1]:find("cached_form=0 requested_form=1 applied_form=2", 1, true))
+    fixed = false
+    setter(0, 1)
+    assert(applied == 1 and displayed == 1 and item.form_type_ == 1 and #logs == 1)
+    setter(-1, 2)
+    assert(applied == 1 and item.form_type_ == 1 and #logs == 1)
 end)
 
 print(string.format("%d Lua regression tests passed; full standard script compiled with %s", passed, _VERSION))
