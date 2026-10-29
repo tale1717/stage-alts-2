@@ -176,8 +176,18 @@ unsafe fn init_loaded_dir(info: &'static FilesystemInfo, index: u32) -> *mut Loa
         // Same criteria for restoring our filesystem, we ensure that we are the top level
         // stage form folder, as the patching method is recursive
         if path.hash40().pretty().components().len() == 3 && alt != 0 {
-            patch_dir_info(fs.arc_mut(), path.hash40().pretty().sub_range(2), alt);
-            patch_search_section(fs.search_mut(), path.hash40().pretty().sub_range(2), alt);
+            // The parent contains both forms. Restore both above, but only apply
+            // this slot to the form being loaded, including revisited alt paths.
+            if let Some(stage) = manager::StageInfo::from_path(path.hash40()) {
+                let parent = path.hash40().pretty().sub_range(2);
+                patch_dir_info(fs.arc_mut(), parent, alt, stage.normal_form);
+                patch_search_section(fs.search_mut(), parent, alt, stage.normal_form);
+            } else {
+                log::warn!(
+                    "Skipping stage patch with unknown form: source={} source_hash={:#x} alt={}",
+                    path.hash40().pretty(), path.hash40().0, alt
+                );
+            }
         }
 
         // If our alt is non-zero, then we should clear the children and add
@@ -403,7 +413,7 @@ pub fn main() {
     // Initialize our logger
     log::set_logger(Box::leak(Box::new(StageAltsLogger::new()))).unwrap();
     log::set_max_level(LevelFilter::Trace);
-    log::info!("[stage-alts] plugin started: random-identity-fix v1 (matching standard Lua required)");
+    log::info!("[stage-alts] plugin started: form-patching-fix v1 (matching standard Lua required)");
 
     utils::init_hash_lookup(false);
 

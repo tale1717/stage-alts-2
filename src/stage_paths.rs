@@ -100,14 +100,21 @@ pub fn redirect_path(components: &[Hash40], alt: usize) -> Option<Hash40> {
 pub enum PatchTarget {
     Redirect(Hash40),
     Alternate,
+    OtherForm,
     Unsupported,
 }
 
 /// Alternate-slot assets are sources, not entries to overwrite when patching
-/// the base stage's directory/search tables.
-pub fn patch_target(components: &[Hash40], alt: usize) -> PatchTarget {
-    if stage_form(components).and_then(alternate_form).is_some() {
+/// the base stage's directory/search tables. Only redirect the loaded form;
+/// unknown folders remain unsupported so their diagnostics are preserved.
+pub fn patch_target(components: &[Hash40], alt: usize, normal_form: bool) -> PatchTarget {
+    let form = stage_form(components);
+    if form.and_then(alternate_form).is_some() {
         return PatchTarget::Alternate;
+    }
+    let other_form = Hash40::new(if normal_form { "battle" } else { "normal" });
+    if form == Some(other_form) {
+        return PatchTarget::OtherForm;
     }
     match redirect_path(components, alt) {
         Some(path) => PatchTarget::Redirect(path),

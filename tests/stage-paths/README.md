@@ -11,3 +11,8 @@ the game's live filesystem tables, resource reference counts, or gameplay.
 
 Stage-identity cases also cover the five failed repeat visits from the log,
 normal/battle forms, and parent-directory recovery using the supplied form.
+
+Form-filter cases cover the exact missing Battlefield target hashes from the log,
+both directions of normal/battle filtering, nested assets, form recovery from
+revisited alt paths, and continued reporting of unknown Kalos/FD folders. The
+filter does not prove live restoration across matches; test that in the game.

@@ -13,18 +13,18 @@ fn file_paths_mut(arc: &mut LoadedArc) -> &mut [FilePath] {
 }
 
 /// Classify the stage form before patching; numbered alt slots remain sources.
-fn patch_file_path(hash: Hash40, alt: usize) -> PatchTarget {
+fn patch_file_path(hash: Hash40, alt: usize, normal_form: bool) -> PatchTarget {
     let pretty = hash.pretty();
     let components: Vec<_> = pretty
         .components()
         .iter()
         .map(|component| hash40::Hash40(component.0))
         .collect();
-    stage_paths::patch_target(&components, alt)
+    stage_paths::patch_target(&components, alt, normal_form)
 }
 
 /// Patches the children of a dir info to use alt paths
-pub fn patch_dir_info(arc: &mut LoadedArc, path: Hash40, alt: usize) {
+pub fn patch_dir_info(arc: &mut LoadedArc, path: Hash40, alt: usize, normal_form: bool) {
     // If the dir info doesn't exist we can't patch it
     let Ok(dir_info) = arc.get_dir_info_from_hash(path).copied() else {
         log::error!("Failed to find dir info for {}", path.pretty());
@@ -38,9 +38,9 @@ pub fn patch_dir_info(arc: &mut LoadedArc, path: Hash40, alt: usize) {
             .path
             .hash40();
 
-        let alt_path = match patch_file_path(path, alt) {
+        let alt_path = match patch_file_path(path, alt, normal_form) {
             PatchTarget::Redirect(hash) => Hash40(hash.0),
-            PatchTarget::Alternate => continue,
+            PatchTarget::Alternate | PatchTarget::OtherForm => continue,
             PatchTarget::Unsupported => {
                 log::warn!(
                     "Unsupported stage path: source={} source_hash={:#x} alt={}",
@@ -102,7 +102,7 @@ pub fn restore_dir_info(arc: &mut LoadedArc, path: Hash40) {
 }
 
 /// Patches a search section to use a certain alt, recursively
-pub fn patch_search_section(search: &mut LoadedSearchSection, path: Hash40, alt: usize) {
+pub fn patch_search_section(search: &mut LoadedSearchSection, path: Hash40, alt: usize, normal_form: bool) {
     // If we can't get folder we can't patch
     let Ok(folder) = search.get_folder_path_entry_from_hash(path) else {
         log::error!("Failed to find search folder {}", path.pretty());
@@ -120,9 +120,9 @@ pub fn patch_search_section(search: &mut LoadedSearchSection, path: Hash40, alt:
         index = path.path.index() as usize;
         let path = path.path.hash40();
 
-        let alt_path = match patch_file_path(path, alt) {
+        let alt_path = match patch_file_path(path, alt, normal_form) {
             PatchTarget::Redirect(hash) => Hash40(hash.0),
-            PatchTarget::Alternate => continue,
+            PatchTarget::Alternate | PatchTarget::OtherForm => continue,
             PatchTarget::Unsupported => {
                 log::error!(
                     "Unsupported stage path: source={} source_hash={:#x} alt={}",

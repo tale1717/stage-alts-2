@@ -68,7 +68,7 @@ mod tests {
     fn rejects_missing_or_misplaced_stage_form_components() {
         for source in ["", "stage", "stage/example", "ui/example/normal", "stage/example/model/normal_s02", "stage/example/model/normal", "stage/example/unknown"] {
             assert_eq!(redirect_path(&components(source), 2), None, "{source}");
-            assert_eq!(patch_target(&components(source), 2), PatchTarget::Unsupported, "{source}");
+            assert_eq!(patch_target(&components(source), 2, true), PatchTarget::Unsupported, "{source}");
         }
     }
 
@@ -77,7 +77,7 @@ mod tests {
         for form in ["normal", "battle"] {
             for slot in [1, 2, 99, 100, 999] {
                 let source = format!("stage/example/{form}_s{slot:02}/model/example_set");
-                assert_eq!(patch_target(&components(&source), 2), PatchTarget::Alternate);
+                assert_eq!(patch_target(&components(&source), 2, true), PatchTarget::Alternate);
             }
         }
     }
@@ -85,7 +85,58 @@ mod tests {
     #[test]
     fn patching_still_redirects_base_entries() {
         let source = components("stage/example/normal/model/example_set");
-        assert_eq!(patch_target(&source, 2), PatchTarget::Redirect(Hash40::new("stage/example/normal_s02/model/example_set")));
+        assert_eq!(patch_target(&source, 2, true), PatchTarget::Redirect(Hash40::new("stage/example/normal_s02/model/example_set")));
+    }
+
+    #[test]
+    fn patching_only_redirects_the_loaded_form_and_its_assets() {
+        for (selected, other, normal) in [("normal", "battle", true), ("battle", "normal", false)] {
+            for tail in ["", "/model/example_set", "/model/normal/battle"] {
+                let selected_path = format!("stage/example/{selected}{tail}");
+                let other_path = format!("stage/example/{other}{tail}");
+                let target = format!("stage/example/{selected}_s08{tail}");
+                assert_eq!(patch_target(&components(&selected_path), 8, normal), PatchTarget::Redirect(Hash40::new(&target)));
+                assert_eq!(patch_target(&components(&other_path), 8, normal), PatchTarget::OtherForm);
+            }
+        }
+    }
+
+    #[test]
+    fn battlefield_missing_targets_from_log_are_skipped_for_normal_loads() {
+        let source = components("stage/battlefield/battle");
+        for (slot, missing_hash) in [(1, 0x1c05487798), (8, 0x1c7c94cf3c)] {
+            assert_eq!(patch_target(&source, slot, true), PatchTarget::OtherForm);
+            // A battle-form request still checks the target instead of hiding a
+            // genuinely missing asset in the requested form.
+            assert_eq!(patch_target(&source, slot, false), PatchTarget::Redirect(Hash40(missing_hash)));
+        }
+    }
+
+    #[test]
+    fn revisited_alt_paths_select_their_form_without_reusing_the_old_slot() {
+        for (loaded, normal) in [("normal_s01", true), ("battle_s08", false), ("normal_s03", true)] {
+            let (_, loaded_normal) = stage_identity(&components(&format!("stage/example/{loaded}"))).unwrap();
+            assert_eq!(loaded_normal, normal);
+            for (form, matches) in [("normal", normal), ("battle", !normal)] {
+                let source = components(&format!("stage/example/{form}"));
+                let expected = if matches {
+                    PatchTarget::Redirect(Hash40::new(&format!("stage/example/{form}_s02")))
+                } else {
+                    PatchTarget::OtherForm
+                };
+                assert_eq!(patch_target(&source, 2, loaded_normal), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn filtering_forms_does_not_hide_unknown_runtime_folders() {
+        for (stage, unknown) in [("poke_kalos", 0xa2502e7a8), ("end", 0xe34681cb6)] {
+            let path = [Hash40::new("stage"), Hash40::new(stage), Hash40(unknown)];
+            for normal in [true, false] {
+                assert_eq!(patch_target(&path, 1, normal), PatchTarget::Unsupported);
+            }
+        }
     }
 
     #[test]
