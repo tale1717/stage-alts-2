@@ -14,6 +14,13 @@ local dispatch_start = assert(source:find("    -- Snapshot alt choices before fi
 local dispatch_end = assert(source:find("\nend\n\nget_tab_switch", dispatch_start, true))
 local dispatch = "return function()\n" .. source:sub(dispatch_start, dispatch_end - 1) .. "\nend"
 
+local function production_function(name, context)
+    local start = assert(source:find("local " .. name .. " = function(", 1, true))
+    local finish = assert(source:find("\nend\n", start, true))
+    return assert(load(source:sub(start, finish + 3) .. "\nreturn " .. name,
+        "@production-" .. name, "t", context))()
+end
+
 local function preview(panel, alt, form, random, custom, fixed_form)
     return {
         panel_id_ = panel, selected_alt_ = alt, form_type_ = form,
@@ -21,11 +28,13 @@ local function preview(panel, alt, form, random, custom, fixed_form)
     }
 end
 
-local function exercise(previews, canceled)
+local function exercise(previews, canceled, before_capture)
     local finalized, stopped, received = false, false, nil
     local queries, logs, form_queries = {}, {}, {}
     local context = setmetatable({
         stage_previews = previews, USE_STAGE_NUM = #previews,
+        UI_INVALID_INDEX = -1, current_selected_preview = 0,
+        set_tab_form_text = function(_) end,
         exit_code_ = canceled and 1 or 0, SCENE_EXIT_CODE_NORMAL = 0,
         stop_long_cancel_se = function() stopped = true end,
         Alts = {
@@ -36,7 +45,13 @@ local function exercise(previews, canceled)
             end
         },
         UiScriptPlayer = {
-            invoke = function(name, index)
+            invoke = function(name, index, value)
+                if name == "set_stage_form_type_stage_preview" then
+                    assert(not finalized)
+                    previews[index + 1].game_applied_form = value
+                    return
+                end
+                if name == "set_stage_preview_from_sub_panel" then return end
                 if name == "is_random_stage_preview" then
                     assert(not finalized, "Read the preview before it is finalized")
                     queries[#queries + 1] = index
@@ -65,6 +80,7 @@ local function exercise(previews, canceled)
             end
         }
     }, {__index = _G})
+    if before_capture then before_capture(context) end
     context.capture_alt_selection = assert(load(helper, "@production-selection-helper", "t", context))()
     assert(load(dispatch, "@production-selection-dispatch", "t", context))()()
     assert(finalized and stopped)
@@ -143,7 +159,7 @@ test("Form diagnostics do not query an override for an ordinary preview", functi
     assert(#queries == 1 and queries[1] == "is_fixed_form_type_stage_preview")
     assert(logs[2]:find("cached_form=2 is_fixed=false fixed_form=-1 sent_form=2", 1, true))
 end)
-test("A conflicting fixed form is logged without changing the Random selection", function()
+test("Without a tracked application the final query alone does not change Random", function()
     local args, _, logs, queries = exercise({preview(-1, 0, 0, true, false, 2)})
     expect(args, {0, -1, 0})
     assert(#queries == 2 and queries[2] == "get_stage_fixed_form_type")
@@ -176,13 +192,88 @@ test("Override logging preserves the setter's existing fixed and ordinary behavi
     }, {__index = _G})
     local setter = assert(load(setter_source, "@production-form-setter", "t", context))()
     setter(0, 1)
-    assert(applied == 2 and displayed == 2 and item.form_type_ == 0)
+    assert(applied == 2 and displayed == 2 and item.form_type_ == 0 and item.applied_form_ == 2)
     assert(logs[1]:find("cached_form=0 requested_form=1 applied_form=2", 1, true))
     fixed = false
     setter(0, 1)
-    assert(applied == 1 and displayed == 1 and item.form_type_ == 1 and #logs == 1)
+    assert(applied == 1 and displayed == 1 and item.form_type_ == 1 and item.applied_form_ == 1 and #logs == 1)
     setter(-1, 2)
     assert(applied == 1 and item.form_type_ == 1 and #logs == 1)
+end)
+
+test("Random retains applied Omega when the confirmation query reverts to Normal", function()
+    local item = preview(-1, 0, 0, true, false, 2)
+    local args, _, logs = exercise({item}, false, function(context)
+        production_function("set_stage_preview_form", context)(0, 0)
+        assert(item.game_applied_form == 2 and item.form_type_ == 0)
+        item.fixed_form = 0
+    end)
+    expect(args, {0, -1, 2})
+    assert(logs[#logs]:find("fixed_form=0 sent_form=2 applied_form=2 form_source=applied tracking=v1", 1, true))
+end)
+test("Returning to Normal replaces a previously applied Omega", function()
+    local item = preview(-1, 0, 0, true, false, 2)
+    local args = exercise({item}, false, function(context)
+        local setter = production_function("set_stage_preview_form", context)
+        setter(0, 0)
+        item.fixed_form = 0
+        setter(0, 0)
+        assert(item.game_applied_form == 0 and item.applied_form_ == 0)
+    end)
+    expect(args, {0, -1, 0})
+end)
+test("Ordinary form changes replace a prior fixed override", function()
+    local item = preview(-1, 0, 0, true, false, 2)
+    local args = exercise({item}, false, function(context)
+        local setter = production_function("set_stage_preview_form", context)
+        setter(0, 0)
+        item.fixed_form = nil
+        setter(0, 1)
+        assert(item.game_applied_form == 1 and item.applied_form_ == 1)
+    end)
+    expect(args, {0, -1, 1})
+end)
+test("A fixed override does not reindex an explicitly selected manual alt", function()
+    local item = preview(3, 1, 0, false, false, 2)
+    local args = exercise({item}, false, function(context)
+        production_function("set_stage_preview_form", context)(0, 0)
+    end)
+    expect(args, {1, 3, 0})
+end)
+test("Tracked forms remain independent across previews", function()
+    local a, b = preview(-1, 0, 0, true, false, 2), preview(-1, 0, 0, true, false, 1)
+    local args = exercise({a, b}, false, function(context)
+        local setter = production_function("set_stage_preview_form", context)
+        setter(0, 0)
+        setter(1, 0)
+        a.fixed_form, b.fixed_form = 0, 0
+    end)
+    expect(args, {0, -1, 2, 0, -1, 1})
+end)
+test("Disabling a preview clears the tracked form before reuse", function()
+    local item = preview(-1, 0, 0, true, false, 2)
+    local args = exercise({item}, false, function(context)
+        production_function("set_stage_preview_form", context)(0, 0)
+        production_function("disable_stage_preview", context)(0)
+        assert(item.applied_form_ == nil)
+        item.fixed_form = 0
+    end)
+    expect(args, {0, -1, 0})
+end)
+test("Entering a custom stage clears the tracked standard form", function()
+    local item = preview(-1, 0, 0, true, false, 2)
+    local args = exercise({item}, false, function(context)
+        production_function("set_stage_preview_form", context)(0, 0)
+        production_function("set_stage_preview_from_sub_stage_panel", context)(0, 5)
+        assert(item.applied_form_ == nil)
+        item.panel_id_, item.is_sub_stage_ = 5, true
+    end)
+    expect(args, {0, 5, 0})
+end)
+test("Invalid tracked forms fall back to the cached selection", function()
+    local item = preview(-1, 0, 1, true)
+    item.applied_form_ = 99
+    expect(exercise({item}), {0, -1, 1})
 end)
 
 print(string.format("%d Lua regression tests passed; full standard script compiled with %s", passed, _VERSION))

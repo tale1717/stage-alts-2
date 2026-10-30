@@ -145,6 +145,7 @@ Members:
     * `enable_`: true if this preview is enabled (there can be multiple previews)
     * `panel_id_`: the pane ID of this preview
     * `form_type_`: the form (normal, battlefield, or omega) of the preview
+    * `applied_form_`: last form passed to the game setter, used for Random alt selection
     * `is_sub_stage_`: if this is a sub stage
     * `music_parts_`: the music note icon/name on the preview
     * `on_button_form_type_`: if the form info (icon + name) is extended out more than the icon
@@ -159,6 +160,7 @@ local StagePreview = { -- R42
             panel_id_ = UI_INVALID_INDEX,
             selected_alt_ = 0,
             form_type_ = 0,
+            applied_form_ = nil,
             is_sub_stage_ = false,
             form_type_parts_ = nil,
             music_parts_ = nil,
@@ -451,6 +453,7 @@ local disable_stage_preview = function(preview_index)
     preview.enable_ = false
     preview.panel_id_ = UI_INVALID_INDEX
     preview.is_sub_stage_ = false
+    preview.applied_form_ = nil
 end
 
 -- Sets the stage form of the specified preview
@@ -465,6 +468,7 @@ local set_stage_preview_form = function(preview_index, stage_form)
                 tostring(stage_form), tostring(training_form)
             ))
             UiScriptPlayer.invoke("set_stage_form_type_stage_preview", preview_index, training_form)
+            stage_previews[preview_index + 1].applied_form_ = training_form
             if preview_index == current_selected_preview then
                 set_tab_form_text(training_form)
             end
@@ -472,6 +476,7 @@ local set_stage_preview_form = function(preview_index, stage_form)
         end
         stage_previews[preview_index + 1].form_type_ = stage_form
         UiScriptPlayer.invoke("set_stage_form_type_stage_preview", preview_index, stage_form)
+        stage_previews[preview_index + 1].applied_form_ = stage_form
         if preview_index == current_selected_preview then
             set_tab_form_text(stage_form)
         end
@@ -510,6 +515,7 @@ end
 -- Sets the stage preview based on the selected custom stage panel
 -- CLOSURE_27, R87
 local set_stage_preview_from_sub_stage_panel = function(preview_index, panel_index)
+    stage_previews[preview_index + 1].applied_form_ = nil
     if allow_sub_stage == true and panel_index ~= UI_INVALID_INDEX then
         set_stage_preview_buttons_enable(preview_index, false)
     end
@@ -1006,6 +1012,7 @@ local setup_from_environment = function()
         end
         current_id = i - 1
         local preview = stage_previews[i]
+        preview.applied_form_ = nil
         preview.enable_ = UiScriptPlayer.invoke("is_valid_entrance_param", current_id)
         if preview.enable_ == true then
             last_enabled_preview = i
@@ -1302,6 +1309,7 @@ local cycle_stage_form = function()
                 if preview.enable_ == false then
                     if i - 1 ~= current_selected_preview then
                         preview.form_type_ = next_form
+                        preview.applied_form_ = nil
                     end
                     local is_fixed = UiScriptPlayer.invoke("is_fixed_form_type_stage_preview", i - 1)
                     if preview.form_type_ ~= STAGE_FORM_TYPE_NORMAL and is_fixed == false then
@@ -2069,18 +2077,27 @@ local capture_alt_selection = function(preview_index)
     local preview = stage_previews[preview_index + 1]
     local is_random = preview.is_sub_stage_ ~= true
         and UiScriptPlayer.invoke("is_random_stage_preview", preview_index) == true
+    -- The fixed-form setter can apply Omega while form_type_ stays Normal.
+    -- Its query may report Normal again at confirmation. Keep the last value
+    -- actually passed to the game, without changing the UI's cached preference
+    -- or the form/list used for an explicitly selected manual alt.
+    local sent_form = preview.form_type_
+    local form_source = "cached"
+    if is_random and (preview.applied_form_ == 0 or preview.applied_form_ == 1 or preview.applied_form_ == 2) then
+        sent_form = preview.applied_form_
+        form_source = "applied"
+    end
     local selection = {
         alt_ = is_random and 0 or preview.selected_alt_,
         panel_ = is_random and -1 or preview.panel_id_,
-        form_ = preview.form_type_
+        form_ = sent_form
     }
     Alts.send_message(string.format(
         "[stage-alts] selection preview=%d random=%s raw_panel=%d sent_panel=%d alt=%d form=%d",
         preview_index, tostring(is_random), preview.panel_id_,
         selection.panel_, selection.alt_, selection.form_
     ))
-    -- Diagnostics only: preserve the cached form sent to Rust so this build
-    -- can distinguish fixed-form overrides from asset-path disagreements.
+    -- Keep the live query as evidence; it does not overwrite the tracked form.
     if preview.is_sub_stage_ ~= true then
         local is_fixed = UiScriptPlayer.invoke("is_fixed_form_type_stage_preview", preview_index) == true
         local fixed_form = -1
@@ -2088,9 +2105,9 @@ local capture_alt_selection = function(preview_index)
             fixed_form = UiScriptPlayer.invoke("get_stage_fixed_form_type", preview_index)
         end
         Alts.send_message(string.format(
-            "[stage-alts] form snapshot preview=%d cached_form=%s is_fixed=%s fixed_form=%s sent_form=%s",
+            "[stage-alts] form snapshot preview=%d cached_form=%s is_fixed=%s fixed_form=%s sent_form=%s applied_form=%s form_source=%s tracking=v1",
             preview_index, tostring(preview.form_type_), tostring(is_fixed),
-            tostring(fixed_form), tostring(selection.form_)
+            tostring(fixed_form), tostring(selection.form_), tostring(preview.applied_form_), form_source
         ))
     end
     return selection
